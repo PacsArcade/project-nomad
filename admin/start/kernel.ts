@@ -28,7 +28,8 @@ server.use([
   () => import('@adonisjs/vite/vite_middleware'),
   () => import('@adonisjs/inertia/inertia_middleware'),
   () => import('@adonisjs/static/static_middleware'),
-  () => import('#middleware/maps_static_middleware')
+  () => import('#middleware/maps_static_middleware'),
+  () => import('#middleware/assistant_static_middleware')
 ])
 
 /**

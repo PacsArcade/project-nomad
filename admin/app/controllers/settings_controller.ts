@@ -7,11 +7,24 @@ import { SystemService } from '#services/system_service'
 import { getSettingSchema, updateSettingSchema, validateSettingValue } from '#validators/settings'
 import { inject } from '@adonisjs/core'
 import type { HttpContext } from '@adonisjs/core/http'
+import app from '@adonisjs/core/services/app'
 import env from '#start/env'
 import { parseMinRelevance } from '../utils/misc.js'
 import { isRelevanceCheckEnabled } from '../utils/relevance_judge.js'
 import { parseResponseStyle } from '../utils/sampler.js'
 import { RAG_MIN_FINAL_SCORE } from '../../constants/ollama.js'
+import { mkdir, unlink } from 'node:fs/promises'
+import { join } from 'node:path'
+import sharp from 'sharp'
+import {
+  ASSISTANT_AVATAR_ALLOWED_EXTENSIONS,
+  ASSISTANT_AVATAR_ALLOWED_FORMATS,
+  ASSISTANT_AVATAR_MAX_BYTES,
+  ASSISTANT_AVATAR_STORAGE_PATH,
+  assistantAvatarFilename,
+  exceedsAssistantAvatarSizeLimit,
+  isAllowedAssistantAvatarFormat,
+} from '../utils/assistant_avatar.js'
 
 @inject()
 export default class SettingsController {
@@ -184,5 +197,80 @@ export default class SettingsController {
     }
     await this.systemService.updateSetting(reqData.key, reqData.value)
     return response.status(200).send({ success: true, message: 'Setting updated successfully' })
+  }
+
+  /**
+   * Upload (or replace) the assistant avatar shown in the chat UI. The
+   * decoded image format sharp reports is what is trusted, not the
+   * client-supplied extension — see chat_images.ts for the same pattern on
+   * chat image attachments. Stored under the persisted storage volume
+   * (storage/assistant), served back by AssistantStaticMiddleware.
+   */
+  async uploadAssistantAvatar({ request, response }: HttpContext) {
+    const file = request.file('avatar', {
+      size: ASSISTANT_AVATAR_MAX_BYTES,
+      extnames: [...ASSISTANT_AVATAR_ALLOWED_EXTENSIONS],
+    })
+    if (!file) {
+      return response.status(400).send({ success: false, message: 'No avatar file uploaded.' })
+    }
+    if (!file.isValid || !file.tmpPath) {
+      return response.status(422).send({
+        success: false,
+        message: file.errors[0]?.message ?? 'That file could not be uploaded as an avatar.',
+      })
+    }
+    if (exceedsAssistantAvatarSizeLimit(file.size)) {
+      return response.status(413).send({
+        success: false,
+        message: `Avatar must be ${Math.floor(ASSISTANT_AVATAR_MAX_BYTES / (1024 * 1024))} MB or smaller.`,
+      })
+    }
+
+    let format: string | undefined
+    try {
+      const metadata = await sharp(file.tmpPath, { failOn: 'warning' }).metadata()
+      format = metadata.format
+    } catch {
+      return response
+        .status(422)
+        .send({ success: false, message: 'Could not read that file as an image.' })
+    }
+    if (!isAllowedAssistantAvatarFormat(format)) {
+      return response
+        .status(415)
+        .send({ success: false, message: 'Avatar must be a JPEG, PNG, WebP, or GIF image.' })
+    }
+
+    const dir = app.makePath(ASSISTANT_AVATAR_STORAGE_PATH)
+    await mkdir(dir, { recursive: true })
+    const filename = assistantAvatarFilename(format)
+    // Clear any previously stored avatar saved under a different format, so
+    // changing formats between uploads never leaves an orphaned file behind.
+    await Promise.all(
+      ASSISTANT_AVATAR_ALLOWED_FORMATS.filter((f) => assistantAvatarFilename(f) !== filename).map(
+        (f) => unlink(join(dir, assistantAvatarFilename(f))).catch(() => {})
+      )
+    )
+    await file.move(dir, { name: filename, overwrite: true })
+
+    // Cache-busted so a same-format re-upload (same URL path) is not served
+    // stale from the browser cache.
+    const url = `/${filename}?v=${Date.now()}`
+    await this.systemService.updateSetting('ai.assistantAvatarUrl', url)
+
+    return response.status(200).send({ success: true, url })
+  }
+
+  /** Remove the uploaded assistant avatar and revert to the default icon. */
+  async removeAssistantAvatar({ response }: HttpContext) {
+    const dir = app.makePath(ASSISTANT_AVATAR_STORAGE_PATH)
+    await Promise.all(
+      ASSISTANT_AVATAR_ALLOWED_FORMATS.map((f) =>
+        unlink(join(dir, assistantAvatarFilename(f))).catch(() => {})
+      )
+    )
+    await this.systemService.updateSetting('ai.assistantAvatarUrl', '')
+    return response.status(200).send({ success: true })
   }
 }

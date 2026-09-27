@@ -49,6 +49,13 @@ export const KV_STORE_SCHEMA = {
   'ui.hasVisitedEasySetup':     'boolean',
   'ui.theme':                   'string',
   'ai.assistantCustomName':     'string',
+  // Served URL of the uploaded assistant-avatar image (e.g.
+  // "/assistant-avatar.webp?v=1234"), or unset for the default wand icon.
+  // Written by SettingsController's upload/remove endpoints via
+  // SystemService.updateSetting, not the generic settings form — see
+  // `admin/app/utils/assistant_avatar.ts` for the upload validation and
+  // storage-path rules, and ChatAssistantAvatar.tsx for where it is rendered.
+  'ai.assistantAvatarUrl':      'string',
   'gpu.type':                   'string',
   'ai.remoteOllamaUrl':         'string',
   'ai.ollamaFlashAttention':    'boolean',

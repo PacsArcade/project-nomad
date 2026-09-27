@@ -4,9 +4,14 @@ import { defineConfig } from '@adonisjs/inertia'
 import type { InferSharedProps } from '@adonisjs/inertia/types'
 
 let _assistantNameCache: { value: string; expiresAt: number } | null = null
+let _assistantAvatarUrlCache: { value: string; expiresAt: number } | null = null
 
 export function invalidateAssistantNameCache() {
   _assistantNameCache = null
+}
+
+export function invalidateAssistantAvatarUrlCache() {
+  _assistantAvatarUrlCache = null
 }
 
 const inertiaConfig = defineConfig({
@@ -29,6 +34,16 @@ const inertiaConfig = defineConfig({
       const customName = await KVStore.getValue('ai.assistantCustomName')
       const value = (customName && customName.trim()) ? customName : 'AI Assistant'
       _assistantNameCache = { value, expiresAt: now + 60_000 }
+      return value
+    },
+    aiAssistantAvatarUrl: async () => {
+      const now = Date.now()
+      if (_assistantAvatarUrlCache && now < _assistantAvatarUrlCache.expiresAt) {
+        return _assistantAvatarUrlCache.value
+      }
+      const url = await KVStore.getValue('ai.assistantAvatarUrl')
+      const value = url ?? ''
+      _assistantAvatarUrlCache = { value, expiresAt: now + 60_000 }
       return value
     },
   },
