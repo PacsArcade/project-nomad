@@ -49,6 +49,12 @@ export const KV_STORE_SCHEMA = {
   'ui.hasVisitedEasySetup':     'boolean',
   'ui.theme':                   'string',
   'ai.assistantCustomName':     'string',
+  // Optional persona/voice text, added to the chat system prompt ahead of the
+  // markdown-formatting instructions when non-empty. See
+  // `admin/app/utils/assistant_persona.ts` for the trim/length-cap rules and
+  // `RagPipelineService.buildPrompt` for where it is injected. Unset/empty
+  // means today's behavior, unchanged.
+  'ai.assistantPersona':        'string',
   'gpu.type':                   'string',
   'ai.remoteOllamaUrl':         'string',
   'ai.ollamaFlashAttention':    'boolean',

@@ -6,6 +6,8 @@ import { RelevanceJudgeService } from '#services/relevance_judge_service'
 import { TokenCalibrationService } from '#services/token_calibration_service'
 import { inject } from '@adonisjs/core'
 import logger from '@adonisjs/core/services/logger'
+import KVStore from '#models/kv_store'
+import { buildDefaultSystemBlocks } from '../utils/assistant_persona.js'
 import {
   RAG_CONTEXT_LIMITS,
   RAG_DEFAULT_SCORE_THRESHOLD,
@@ -67,10 +69,14 @@ export class RagPipelineService {
 
     const systemBlocks: OllamaChatMessage[] = [...callerSystem]
 
-    // Default formatting prompt, only when the caller supplied no system message.
+    // Default formatting prompt (and, ahead of it, the optional assistant
+    // persona), only when the caller supplied no system message. Persona is
+    // skipped in evals for the same reason NOMAD.md is below: a developer's
+    // personal customization would silently skew every score.
     if (callerSystem.length === 0) {
       logger.debug('[RagPipeline] Injecting system prompt')
-      systemBlocks.push({ role: 'system', content: SYSTEM_PROMPTS.default })
+      const personaRaw = opts.skipNomadMd ? null : await KVStore.getValue('ai.assistantPersona')
+      systemBlocks.push(...buildDefaultSystemBlocks(personaRaw, SYSTEM_PROMPTS.default))
     }
 
     // The user-managed NOMAD.md goes in front of the formatting prompt so the

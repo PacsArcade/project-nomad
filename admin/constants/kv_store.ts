@@ -8,6 +8,7 @@ export const SETTINGS_KEYS: KVStoreKey[] = [
     'system.earlyAccess',
     'system.internetStatusTestUrl',
     'ai.assistantCustomName',
+    'ai.assistantPersona',
     'ai.remoteOllamaUrl',
     'ai.ollamaFlashAttention',
     'ai.autoThinking',

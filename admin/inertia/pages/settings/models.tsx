@@ -18,6 +18,8 @@ import Select from '~/components/inputs/Select'
 import StyledSectionHeader from '~/components/StyledSectionHeader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Input from '~/components/inputs/Input'
+import Textarea from '~/components/inputs/Textarea'
+import { ASSISTANT_PERSONA_MAX_LENGTH } from '../../../app/utils/assistant_persona'
 import { IconSearch, IconRefresh } from '@tabler/icons-react'
 import { formatBytes } from '~/lib/util'
 import useDebounce from '~/hooks/useDebounce'
@@ -29,7 +31,7 @@ export default function ModelsPage(props: {
   models: {
     availableModels: NomadOllamaModel[]
     installedModels: NomadInstalledModel[]
-    settings: { chatSuggestionsEnabled: boolean; aiAssistantCustomName: string; remoteOllamaUrl: string; ollamaFlashAttention: boolean; autoThinking: boolean; tasksModel: string; ragEnabled: boolean; contextWindow: string; minRelevance: number; relevanceCheck: boolean; responseStyle: string }
+    settings: { chatSuggestionsEnabled: boolean; aiAssistantCustomName: string; aiAssistantPersona: string; remoteOllamaUrl: string; ollamaFlashAttention: boolean; autoThinking: boolean; tasksModel: string; ragEnabled: boolean; contextWindow: string; minRelevance: number; relevanceCheck: boolean; responseStyle: string }
     /** Effective window per installed model, as resolved by ContextWindowService. */
     resolvedContextWindows?: Record<string, number>
   }
@@ -57,6 +59,9 @@ export default function ModelsPage(props: {
   const [responseStyle, setResponseStyle] = useState(props.models.settings.responseStyle)
   const [aiAssistantCustomName, setAiAssistantCustomName] = useState(
     props.models.settings.aiAssistantCustomName
+  )
+  const [aiAssistantPersona, setAiAssistantPersona] = useState(
+    props.models.settings.aiAssistantPersona
   )
   const [remoteOllamaUrl, setRemoteOllamaUrl] = useState(props.models.settings.remoteOllamaUrl)
   const [remoteOllamaError, setRemoteOllamaError] = useState<string | null>(null)
@@ -348,6 +353,23 @@ export default function ModelsPage(props: {
                   updateSettingMutation.mutate({
                     key: 'ai.assistantCustomName',
                     value: aiAssistantCustomName,
+                  })
+                }
+              />
+              <Textarea
+                name="aiAssistantPersona"
+                label="Assistant Persona"
+                helpText="Optional. Describe a voice, tone, or role for the assistant to use in every chat, e.g. 'Answer like a patient outdoor-skills instructor who keeps things simple.' Leave blank to use the assistant's default voice."
+                placeholder="e.g. Answer like a patient outdoor-skills instructor who keeps things simple."
+                rows={3}
+                maxLength={ASSISTANT_PERSONA_MAX_LENGTH}
+                counterMax={ASSISTANT_PERSONA_MAX_LENGTH}
+                value={aiAssistantPersona}
+                onChange={(e) => setAiAssistantPersona(e.target.value)}
+                onBlur={() =>
+                  updateSettingMutation.mutate({
+                    key: 'ai.assistantPersona',
+                    value: aiAssistantPersona,
                   })
                 }
               />

@@ -3,6 +3,7 @@ import { SETTINGS_KEYS } from "../../constants/kv_store.js";
 import type { KVStoreKey } from "../../types/kv_store.js";
 import { CONTEXT_LADDER } from "../utils/context_window.js";
 import { RESPONSE_STYLE_PRESETS } from "../../constants/ollama.js";
+import { ASSISTANT_PERSONA_MAX_LENGTH } from "../utils/assistant_persona.js";
 
 export const getSettingSchema = vine.compile(vine.object({
     key: vine.enum(SETTINGS_KEYS),
@@ -128,6 +129,19 @@ export function validateSettingValue(key: KVStoreKey, value: unknown): string | 
             }
             if (typeof raw !== 'string' || !/^\d{1,2}\.\d{1,2}\.\d{1,2}$/.test(raw)) {
                 return 'GFX override must be a version like "11.0.0", "none", or empty to use the detected default.'
+            }
+            return null
+        }
+        case 'ai.assistantPersona': {
+            // Empty clears the setting and reverts to no persona (today's behavior).
+            if (value === '' || value === undefined || value === null) {
+                return null
+            }
+            if (typeof value !== 'string') {
+                return 'Persona must be text.'
+            }
+            if (value.trim().length > ASSISTANT_PERSONA_MAX_LENGTH) {
+                return `Persona must be ${ASSISTANT_PERSONA_MAX_LENGTH} characters or fewer.`
             }
             return null
         }

@@ -109,8 +109,9 @@ export type PipelineOptions = {
   /** Bypass retrieval entirely and inject these chunks as the context. Used by
    *  the `oracle` eval mode to isolate generation quality from retrieval. */
   oracleContext?: RetrievedChunk[]
-  /** Ignore the user's NOMAD.md. Off in production; on in evals, where a
-   *  developer's personal instructions would silently skew every result. */
+  /** Ignore the user's NOMAD.md and the `ai.assistantPersona` setting. Off in
+   *  production; on in evals, where a developer's personal instructions would
+   *  silently skew every result. */
   skipNomadMd?: boolean
   /** Skip the entire retrieval pipeline — the hasDocuments check, the
    *  query-rewrite LLM call and the Qdrant search — leaving the prompt with
