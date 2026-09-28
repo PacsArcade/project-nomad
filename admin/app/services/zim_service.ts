@@ -36,6 +36,7 @@ import { KiwixCatalogService } from './kiwix_catalog_service.js'
 import { KiwixLibraryService } from './kiwix_library_service.js'
 import { RagService } from './rag_service.js'
 import { OllamaService } from './ollama_service.js'
+import { SystemService } from './system_service.js'
 import type { CategoryWithStatus } from '../../types/collections.js'
 import CustomLibrarySource from '#models/custom_library_source'
 import { assertNotPrivateUrl } from '#validators/common'
@@ -759,7 +760,11 @@ export class ZimService {
     const qdrantInstalled = !!(await this.dockerService.getServiceURL(SERVICE_NAMES.QDRANT))
     if (qdrantInstalled) {
       try {
-        const ragService = new RagService(this.dockerService, new OllamaService())
+        const ragService = new RagService(
+          this.dockerService,
+          new OllamaService(),
+          new SystemService(this.dockerService)
+        )
         await ragService.purgeIndexedSource(fullPath)
       } catch (err) {
         logger.error(`[ZimService] Failed to purge knowledge-base entries for ${fullPath}:`, err)

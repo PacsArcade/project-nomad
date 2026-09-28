@@ -422,6 +422,10 @@ router
       summary: 'Upload a file for RAG',
       tags: ['rag'],
     })
+    documented(router.post('/ingest-url', [RagController, 'ingestUrl']), {
+      summary: 'Ingest documents from a public GitHub repository or URL',
+      tags: ['rag'],
+    })
     documented(router.get('/files', [RagController, 'getStoredFiles']), {
       summary: 'List stored RAG files',
       tags: ['rag'],

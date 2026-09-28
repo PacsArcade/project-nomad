@@ -8,6 +8,7 @@ import { ZimService } from '#services/zim_service'
 import { MapService } from '#services/map_service'
 import { RagService } from '#services/rag_service'
 import { OllamaService } from '#services/ollama_service'
+import { SystemService } from '#services/system_service'
 import { EmbedFileJob } from './embed_file_job.js'
 import { basename, join, resolve, sep } from 'node:path'
 import { ZIM_STORAGE_PATH } from '../utils/fs.js'
@@ -230,7 +231,11 @@ export class RunDownloadJob {
                   // honor that choice in both directions. See the method for the
                   // full 5-step contract.
                   try {
-                    const ragService = new RagService(dockerService, new OllamaService())
+                    const ragService = new RagService(
+                      dockerService,
+                      new OllamaService(),
+                      new SystemService(dockerService)
+                    )
                     const outcome = await ragService.reconcileReplacedContentFile({
                       oldFilePath: oldFilePath!,
                       newFilePath: filepath,

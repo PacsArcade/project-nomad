@@ -154,6 +154,8 @@ The Knowledge Base lets you upload documents so the AI can reference them when a
 4. Ask questions in AI Chat — the AI will reference your uploaded documents when relevant
 5. Remove documents you no longer need — they'll be deleted from the index and local storage
 
+**Ingest from GitHub or a URL:** instead of uploading files by hand, you can point the Knowledge Base at a public GitHub repository (the whole repo, or just a subdirectory) or a direct link to a single document, and NOMAD will download and index the matching files (.md, .txt, .rtf, .pdf, .docx, .epub) for you. This requires an internet connection and is capped at 200 files or 50 MB per ingest, and unauthenticated GitHub API calls are limited to 60 per hour.
+
 **Use cases:**
 - Upload emergency plans for quick reference during a crisis
 - Load technical manuals and SOPs for offline work sites
