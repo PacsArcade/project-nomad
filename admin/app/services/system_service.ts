@@ -30,7 +30,7 @@ import {
   resolveExpectedGpuVendor,
   type OllamaGpuInfo,
 } from '#services/ollama_compute'
-import { invalidateAssistantNameCache } from '../../config/inertia.js'
+import { invalidateAssistantAvatarUrlCache, invalidateAssistantNameCache } from '../../config/inertia.js'
 import { invalidateMinRelevanceCache } from '../utils/rag_relevance.js'
 import { invalidateResponseStyleCache } from '../utils/response_style.js'
 import { KiwixLibraryService } from '#services/kiwix_library_service'
@@ -926,6 +926,9 @@ export class SystemService {
     }
     if (key === 'ai.assistantCustomName') {
       invalidateAssistantNameCache()
+    }
+    if (key === 'ai.assistantAvatarUrl') {
+      invalidateAssistantAvatarUrlCache()
     }
     if (key === 'rag.minRelevance') {
       invalidateMinRelevanceCache()

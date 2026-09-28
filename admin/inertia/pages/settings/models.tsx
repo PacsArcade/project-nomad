@@ -36,7 +36,10 @@ export default function ModelsPage(props: {
     resolvedContextWindows?: Record<string, number>
   }
 }) {
-  const { aiAssistantName } = usePage<{ aiAssistantName: string }>().props
+  const { aiAssistantName, aiAssistantAvatarUrl } = usePage<{
+    aiAssistantName: string
+    aiAssistantAvatarUrl: string
+  }>().props
   const { isInstalled } = useServiceInstalledStatus(SERVICE_NAMES.OLLAMA)
   const { addNotification } = useNotifications()
   const { openModal, closeAllModals } = useModals()
@@ -66,6 +69,37 @@ export default function ModelsPage(props: {
   const [remoteOllamaUrl, setRemoteOllamaUrl] = useState(props.models.settings.remoteOllamaUrl)
   const [remoteOllamaError, setRemoteOllamaError] = useState<string | null>(null)
   const [remoteOllamaSaving, setRemoteOllamaSaving] = useState(false)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const avatarFileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleAvatarFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setAvatarUploading(true)
+    try {
+      const res = await api.uploadAssistantAvatar(file)
+      if (res?.success) {
+        addNotification({ message: 'Assistant avatar updated.', type: 'success' })
+        router.reload()
+      }
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
+
+  async function handleRemoveAvatar() {
+    setAvatarUploading(true)
+    try {
+      const res = await api.removeAssistantAvatar()
+      if (res?.success) {
+        addNotification({ message: 'Assistant avatar removed.', type: 'success' })
+        router.reload()
+      }
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
 
   async function handleSaveRemoteOllama() {
     setRemoteOllamaError(null)
@@ -373,6 +407,51 @@ export default function ModelsPage(props: {
                   })
                 }
               />
+              <div>
+                <label className="block text-base/6 font-medium text-text-primary">
+                  Assistant Avatar
+                </label>
+                <p className="mt-1 text-sm text-text-muted">
+                  Optional. Upload an image to use instead of the default icon in the chat
+                  interface. JPEG, PNG, WebP, or GIF, 4 MB or smaller.
+                </p>
+                <div className="mt-1.5 flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-desert-green flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {aiAssistantAvatarUrl ? (
+                      <img
+                        src={aiAssistantAvatarUrl}
+                        alt={`${aiAssistantName} avatar`}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-white text-xs">{aiAssistantName?.[0] ?? 'A'}</span>
+                    )}
+                  </div>
+                  <input
+                    ref={avatarFileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handleAvatarFileChange}
+                  />
+                  <StyledButton
+                    variant="secondary"
+                    disabled={avatarUploading}
+                    onClick={() => avatarFileInputRef.current?.click()}
+                  >
+                    {avatarUploading ? 'Uploading...' : aiAssistantAvatarUrl ? 'Replace' : 'Upload'}
+                  </StyledButton>
+                  {aiAssistantAvatarUrl && (
+                    <StyledButton
+                      variant="secondary"
+                      disabled={avatarUploading}
+                      onClick={handleRemoveAvatar}
+                    >
+                      Remove
+                    </StyledButton>
+                  )}
+                </div>
+              </div>
               <Select
                 name="tasksModel"
                 label="Tasks Model"

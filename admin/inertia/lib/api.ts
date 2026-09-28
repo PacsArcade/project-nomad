@@ -1234,6 +1234,28 @@ class API {
     })()
   }
 
+  async uploadAssistantAvatar(file: File) {
+    return catchInternal(async () => {
+      const formData = new FormData()
+      formData.append('avatar', file)
+      const response = await this.client.post<{ success: boolean; url?: string; message?: string }>(
+        '/system/settings/assistant-avatar',
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      )
+      return response.data
+    })()
+  }
+
+  async removeAssistantAvatar() {
+    return catchInternal(async () => {
+      const response = await this.client.delete<{ success: boolean }>(
+        '/system/settings/assistant-avatar'
+      )
+      return response.data
+    })()
+  }
+
   async getNomadMd() {
     return catchInternal(async () => {
       const response = await this.client.get<{ content: string }>('/ai/nomad-md')

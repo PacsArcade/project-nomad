@@ -687,6 +687,14 @@ router
       tags: ['system'],
       request: updateSettingSchema,
     })
+    documented(router.post('/settings/assistant-avatar', [SettingsController, 'uploadAssistantAvatar']), {
+      summary: 'Upload (or replace) the assistant avatar image',
+      tags: ['system'],
+    })
+    documented(router.delete('/settings/assistant-avatar', [SettingsController, 'removeAssistantAvatar']), {
+      summary: 'Remove the assistant avatar image and revert to the default icon',
+      tags: ['system'],
+    })
   })
   .prefix('/api/system')
 
