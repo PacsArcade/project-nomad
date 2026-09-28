@@ -1,17 +1,40 @@
 import { QdrantClient } from '@qdrant/js-client-rest'
 import { DockerService } from './docker_service.js'
+import { SystemService } from './system_service.js'
 import { inject } from '@adonisjs/core'
 import logger from '@adonisjs/core/services/logger'
 import { TokenChunker } from '@chonkiejs/core'
 import sharp from 'sharp'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import {
   deleteFileIfExists,
   determineFileType,
   getFile,
   getFileStatsIfExists,
   listDirectoryContentsRecursive,
+  sanitizeFilename,
   ZIM_STORAGE_PATH,
 } from '../utils/fs.js'
+import {
+  assertIngestableUrl,
+  buildRemoteRepoDir,
+  downloadGithubRawFile,
+  downloadRemoteFile,
+  exceedsIngestCap,
+  fetchGithubDefaultBranch,
+  fetchGithubTree,
+  filterTreeEntries,
+  INGESTABLE_EXTENSIONS,
+  isIngestableExtension,
+  KB_REMOTE_MAX_FILES,
+  KB_REMOTE_MAX_TOTAL_BYTES,
+  KB_REMOTE_STORAGE_PATH,
+  parseGithubUrl,
+  sanitizeRelativePath,
+} from '../utils/kb_remote_ingest.js'
+
+const INGESTABLE_EXT_LIST = INGESTABLE_EXTENSIONS.join(', ')
 import { PDFParse } from 'pdf-parse'
 import { createWorker } from 'tesseract.js'
 import { fromBuffer } from 'pdf2pic'
@@ -76,6 +99,7 @@ export class RagService {
   // every embed call — ~45% of per-document Qdrant time on large ingestions (#1129)
   private ensuredCollections = new Set<string>()
   public static UPLOADS_STORAGE_PATH = 'storage/kb_uploads'
+  public static KB_REMOTE_STORAGE_PATH = KB_REMOTE_STORAGE_PATH
   public static CONTENT_COLLECTION_NAME = 'nomad_knowledge_base'
   public static EMBEDDING_DIMENSION = 768 // Nomic Embed Text v1.5 dimension is 768
   // Upper bound on distinct sources returned by Qdrant's facet API. Real
@@ -100,7 +124,8 @@ export class RagService {
 
   constructor(
     private dockerService: DockerService,
-    private ollamaService: OllamaService
+    private ollamaService: OllamaService,
+    private systemService: SystemService
   ) {}
 
   private async _initializeQdrantClient() {
@@ -1386,11 +1411,19 @@ export class RagService {
       }
 
       const uploadsAbsPath = resolve(join(process.cwd(), RagService.UPLOADS_STORAGE_PATH))
+      const kbRemoteAbsPath = resolve(join(process.cwd(), RagService.KB_REMOTE_STORAGE_PATH))
       return await Promise.all(
         Array.from(sources).map(async (source) => {
           const row = stateByPath.get(source)
           const fileName = source.split(/[/\\]/).at(-1) ?? source
-          const isUserUpload = resolve(source).startsWith(uploadsAbsPath + sep)
+          const resolvedSource = resolve(source)
+          // Files ingested from a GitHub repo/URL (storage/kb_remote/...) get
+          // the same view/download treatment as an uploaded file -- they were
+          // pulled in by the user's own action, not discovered on disk like
+          // the bundled Nomad docs.
+          const isUserUpload =
+            resolvedSource.startsWith(uploadsAbsPath + sep) ||
+            resolvedSource.startsWith(kbRemoteAbsPath + sep)
           const stats = await getFileStatsIfExists(source)
           return {
             source,
@@ -2061,6 +2094,178 @@ export class RagService {
     } catch (error) {
       logger.error('Error discovering Nomad docs:', error)
       return { success: false, message: 'Error discovering Nomad docs.' }
+    }
+  }
+
+  private async _writeRemoteFile(relPath: string, buffer: Buffer): Promise<string> {
+    const absPath = join(process.cwd(), relPath)
+    await mkdir(dirname(absPath), { recursive: true })
+    await writeFile(absPath, buffer)
+    return absPath
+  }
+
+  /**
+   * Ingests documents from a public GitHub repository or a single file URL
+   * into the Knowledge Base. Mirrors discoverNomadDocs()'s "find files, then
+   * dispatch one EmbedFileJob per file" shape, but the files come from the
+   * network (GitHub) instead of local disk, so they're downloaded to
+   * `storage/kb_remote/<owner>__<repo>/...` first -- EmbedFileJob and the fs
+   * utils (getFile/determineFileType) only know how to read local files.
+   *
+   * Supports:
+   *   - https://github.com/<owner>/<repo>                       (whole repo, default branch)
+   *   - https://github.com/<owner>/<repo>/tree/<branch>/<subdir> (one subdirectory)
+   *   - https://github.com/<owner>/<repo>/blob/<branch>/<path>   (a single file in a repo)
+   *   - https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path> (a single raw file)
+   *   - any other https URL, ingested as one file (e.g. a direct PDF link)
+   *
+   * Capped at KB_REMOTE_MAX_FILES files / KB_REMOTE_MAX_TOTAL_BYTES per call,
+   * and filtered to INGESTABLE_EXTENSIONS. Unauthenticated GitHub API calls
+   * are rate-limited to 60/hour; that limit is surfaced as a clear error
+   * rather than a generic failure.
+   */
+  public async ingestRemote(
+    url: string,
+    collection?: string
+  ): Promise<{ success: boolean; message: string; filesQueued?: number; skipped?: number }> {
+    try {
+      const online = await this.systemService.getInternetStatus()
+      if (!online) {
+        return {
+          success: false,
+          message:
+            'NOMAD is offline. Connect to the internet to ingest from a GitHub repository or URL.',
+        }
+      }
+
+      assertIngestableUrl(url)
+
+      const target = parseGithubUrl(url)
+      const { EmbedFileJob } = await import('#jobs/embed_file_job')
+
+      // Whole repo (or a subdirectory of one) -- discover files via the Git
+      // Trees API, then download and dispatch each one.
+      if (target && !target.singleFilePath) {
+        const branch = target.branch ?? (await fetchGithubDefaultBranch(target.owner, target.repo))
+        const { tree, truncated } = await fetchGithubTree(target.owner, target.repo, branch)
+        if (truncated) {
+          logger.warn(
+            `[RAG] GitHub tree listing for ${target.owner}/${target.repo}@${branch} was truncated by the GitHub API (very large repo); some files may be missed.`
+          )
+        }
+        const filtered = filterTreeEntries(tree, {
+          subdir: target.subdir,
+          maxFiles: KB_REMOTE_MAX_FILES,
+          maxTotalBytes: KB_REMOTE_MAX_TOTAL_BYTES,
+        })
+
+        if (filtered.included.length === 0) {
+          return {
+            success: false,
+            message: `No ingestable files found in ${target.owner}/${target.repo} (looking for: ${INGESTABLE_EXT_LIST}).`,
+          }
+        }
+
+        const remoteDir = buildRemoteRepoDir(target.owner, target.repo)
+        let queued = 0
+        for (const entry of filtered.included) {
+          try {
+            const buffer = await downloadGithubRawFile(
+              target.owner,
+              target.repo,
+              branch,
+              entry.path
+            )
+            const relPath = sanitizeRelativePath(entry.path)
+            const destAbsPath = await this._writeRemoteFile(`${remoteDir}/${relPath}`, buffer)
+            await EmbedFileJob.dispatch({
+              filePath: destAbsPath,
+              fileName: `${target.owner}/${target.repo}/${relPath}`,
+              ...(collection ? { collection } : {}),
+            })
+            queued++
+          } catch (fileError) {
+            logger.error(
+              { err: fileError },
+              `[RAG] Error ingesting ${entry.path} from ${target.owner}/${target.repo}`
+            )
+          }
+        }
+
+        const skippedNote =
+          filtered.skippedByCap > 0
+            ? ` (${filtered.skippedByCap} file${filtered.skippedByCap === 1 ? '' : 's'} skipped over the ${KB_REMOTE_MAX_FILES}-file / ${Math.round(KB_REMOTE_MAX_TOTAL_BYTES / (1024 * 1024))}MB cap)`
+            : ''
+        return {
+          success: queued > 0,
+          message:
+            queued > 0
+              ? `Queued ${queued} file${queued === 1 ? '' : 's'} from ${target.owner}/${target.repo} for embedding${skippedNote}.`
+              : `Found files in ${target.owner}/${target.repo} but none could be downloaded.`,
+          filesQueued: queued,
+          skipped: filtered.skippedByCap,
+        }
+      }
+
+      // Single file: either a GitHub blob/raw link, or an arbitrary https URL.
+      const urlPath = new URL(url).pathname
+      const fileName = sanitizeFilename(urlPath.split('/').filter(Boolean).at(-1) || 'document')
+
+      if (!isIngestableExtension(fileName)) {
+        return {
+          success: false,
+          message: `Unsupported file type for "${fileName}". Supported: ${INGESTABLE_EXT_LIST}.`,
+        }
+      }
+
+      let buffer: Buffer
+      let destRelPath: string
+      let dispatchName: string
+
+      if (target && target.singleFilePath) {
+        const branch = target.branch ?? (await fetchGithubDefaultBranch(target.owner, target.repo))
+        buffer = await downloadGithubRawFile(
+          target.owner,
+          target.repo,
+          branch,
+          target.singleFilePath
+        )
+        const relPath = sanitizeRelativePath(target.singleFilePath)
+        destRelPath = `${buildRemoteRepoDir(target.owner, target.repo)}/${relPath}`
+        dispatchName = `${target.owner}/${target.repo}/${relPath}`
+      } else {
+        buffer = await downloadRemoteFile(url)
+        const host = sanitizeFilename(new URL(url).hostname)
+        destRelPath = `${KB_REMOTE_STORAGE_PATH}/_url/${host}/${fileName}`
+        dispatchName = fileName
+      }
+
+      if (exceedsIngestCap(buffer.byteLength)) {
+        return {
+          success: false,
+          message: `File exceeds the ${Math.round(KB_REMOTE_MAX_TOTAL_BYTES / (1024 * 1024))}MB ingest cap.`,
+        }
+      }
+
+      const destAbsPath = await this._writeRemoteFile(destRelPath, buffer)
+      await EmbedFileJob.dispatch({
+        filePath: destAbsPath,
+        fileName: dispatchName,
+        ...(collection ? { collection } : {}),
+      })
+
+      return {
+        success: true,
+        message: `Queued ${dispatchName} for embedding.`,
+        filesQueued: 1,
+        skipped: 0,
+      }
+    } catch (error) {
+      logger.error({ err: error }, '[RAG] Error ingesting remote URL')
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Error ingesting from URL.',
+      }
     }
   }
 

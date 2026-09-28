@@ -4,6 +4,7 @@ import { EmbedJobWithProgress } from '../../types/rag.js'
 import { RagService } from '#services/rag_service'
 import { DockerService } from '#services/docker_service'
 import { OllamaService } from '#services/ollama_service'
+import { SystemService } from '#services/system_service'
 import KbIngestState from '#models/kb_ingest_state'
 import { createHash } from 'crypto'
 import logger from '@adonisjs/core/services/logger'
@@ -74,7 +75,8 @@ export class EmbedFileJob {
 
     const dockerService = new DockerService()
     const ollamaService = new OllamaService()
-    const ragService = new RagService(dockerService, ollamaService)
+    const systemService = new SystemService(dockerService)
+    const ragService = new RagService(dockerService, ollamaService, systemService)
 
     try {
       // Check if Ollama and Qdrant services are installed and ready

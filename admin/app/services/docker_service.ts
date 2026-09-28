@@ -969,7 +969,8 @@ export class DockerService {
         
         // Need to use dynamic imports here to avoid circular dependency
         const ollamaService = new (await import('./ollama_service.js')).OllamaService()
-        const ragService = new (await import('./rag_service.js')).RagService(this, ollamaService)
+        const systemService = new (await import('./system_service.js')).SystemService(this)
+        const ragService = new (await import('./rag_service.js')).RagService(this, ollamaService, systemService)
 
         ragService.discoverNomadDocs().catch((error) => {
           logger.error('[DockerService] Failed to discover Nomad docs:', error)
