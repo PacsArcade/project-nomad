@@ -25,6 +25,16 @@ export const fileSourceSchema = vine.compile(
   })
 )
 
+export const ingestUrlSchema = vine.compile(
+  vine.object({
+    url: vine
+      .string()
+      .trim()
+      .url({ protocols: ['https'], require_protocol: true }),
+    collection: vine.string().trim().optional(),
+  })
+)
+
 export const estimateBatchSchema = vine.compile(
   vine.object({
     files: vine

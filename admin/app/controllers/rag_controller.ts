@@ -7,7 +7,14 @@ import app from '@adonisjs/core/services/app'
 import { randomBytes } from 'node:crypto'
 import { sanitizeFilename } from '../utils/fs.js'
 import { basename } from 'node:path'
-import { deleteFileSchema, embedFileSchema, estimateBatchSchema, fileSourceSchema, getJobStatusSchema } from '#validators/rag'
+import {
+  deleteFileSchema,
+  embedFileSchema,
+  estimateBatchSchema,
+  fileSourceSchema,
+  getJobStatusSchema,
+  ingestUrlSchema,
+} from '#validators/rag'
 import logger from '@adonisjs/core/services/logger'
 import { sanitizeCollectionName } from '../../constants/kb_collections.js'
 
@@ -49,6 +56,36 @@ export default class RagController {
       ...(collection ? { collection } : {}),
     })
   }
+  public async ingestUrl({ request, response }: HttpContext) {
+    let reqData: { url: string; collection?: string }
+    try {
+      reqData = await request.validateUsing(ingestUrlSchema)
+    } catch (error: any) {
+      return response.status(400).json({ error: error?.messages?.[0]?.message || 'Invalid URL.' })
+    }
+
+    const collection = sanitizeCollectionName(reqData.collection ?? null)
+
+    let result
+    try {
+      result = await this.ragService.ingestRemote(reqData.url, collection ?? undefined)
+    } catch (error: any) {
+      logger.error({ err: error }, '[RagController] Error ingesting remote URL')
+      return response.status(400).json({ error: error?.message || 'Invalid URL.' })
+    }
+
+    if (!result.success) {
+      return response.status(400).json({ error: result.message })
+    }
+
+    return response.status(202).json({
+      message: result.message,
+      filesQueued: result.filesQueued ?? 0,
+      skipped: result.skipped ?? 0,
+      ...(collection ? { collection } : {}),
+    })
+  }
+
   public async getActiveJobs({ response }: HttpContext) {
     const jobs = await EmbedFileJob.listActiveJobs()
     return response.status(200).json(jobs)
