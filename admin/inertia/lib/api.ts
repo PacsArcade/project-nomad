@@ -1117,6 +1117,20 @@ class API {
     })()
   }
 
+  async ingestUrl(url: string, collection?: string) {
+    return catchInternal(async () => {
+      const response = await this.client.post<{
+        message: string
+        filesQueued: number
+        skipped: number
+      }>('/rag/ingest-url', {
+        url,
+        ...(collection ? { collection } : {}),
+      })
+      return response.data
+    })()
+  }
+
   async getKnowledgeCollections() {
     return catchInternal(async () => {
       const response = await this.client.get<{ collections: string[] }>('/rag/collections')

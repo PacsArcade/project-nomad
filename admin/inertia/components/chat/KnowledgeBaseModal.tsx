@@ -34,6 +34,8 @@ import CollectionsManager from './CollectionsManager'
 import { KB_COLLECTIONS } from '../../../constants/kb_collections'
 import CollectionCombobox from './CollectionCombobox'
 import Switch from '~/components/inputs/Switch'
+import Input from '~/components/inputs/Input'
+import useInternetStatus from '~/hooks/useInternetStatus'
 
 interface KnowledgeBaseModalProps {
   aiAssistantName?: string
@@ -196,6 +198,8 @@ export default function KnowledgeBaseModal({
   const [files, setFiles] = useState<File[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [uploadCollection, setUploadCollection] = useState<string>('')
+  const [ingestUrl, setIngestUrl] = useState('')
+  const { isOnline } = useInternetStatus()
   const [collectionFilter, setCollectionFilter] = useState<string>('All')
   const [manageCollectionsOpen, setManageCollectionsOpen] = useState(false)
   const [confirmDeleteSource, setConfirmDeleteSource] = useState<string | null>(null)
@@ -289,6 +293,19 @@ export default function KnowledgeBaseModal({
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => api.uploadDocument(file, uploadCollection || undefined),
+  })
+
+  const ingestUrlMutation = useMutation({
+    mutationFn: (targetUrl: string) => api.ingestUrl(targetUrl, uploadCollection || undefined),
+    onSuccess: (data) => {
+      if (!data) return
+      setIngestUrl('')
+      queryClient.invalidateQueries({ queryKey: ['embed-jobs'] })
+      addNotification({
+        type: 'success',
+        message: data.message || 'Queued for processing.',
+      })
+    },
   })
 
   const updateCollectionMutation = useMutation({
@@ -495,6 +512,12 @@ export default function KnowledgeBaseModal({
     }
   }
 
+  const handleIngest = async () => {
+    const trimmed = ingestUrl.trim()
+    if (!trimmed || ingestUrlMutation.isPending) return
+    await ingestUrlMutation.mutateAsync(trimmed)
+  }
+
   const toggleCollectionExpanded = (key: string) => {
     setExpandedCollections((prev) => {
       const next = new Set(prev)
@@ -620,6 +643,40 @@ export default function KnowledgeBaseModal({
                 >
                   Upload
                 </StyledButton>
+              </div>
+              <div className="border-t border-border-subtle pt-6">
+                {!isOnline ? (
+                  <p className="text-sm text-text-muted">
+                    <strong>Ingest from GitHub or a URL:</strong> NOMAD is offline. Connect to the
+                    internet to use this.
+                  </p>
+                ) : (
+                  <div className="flex items-end gap-4">
+                    <Input
+                      name="kb-ingest-url"
+                      label="Ingest from GitHub or a URL"
+                      className="flex-1"
+                      placeholder="https://github.com/<owner>/<repo>"
+                      value={ingestUrl}
+                      onChange={(e) => setIngestUrl(e.target.value)}
+                      disabled={ingestUrlMutation.isPending || qdrantOffline}
+                    />
+                    <StyledButton
+                      variant="secondary"
+                      size="lg"
+                      icon="IconCloudDownload"
+                      onClick={handleIngest}
+                      disabled={!ingestUrl.trim() || ingestUrlMutation.isPending || qdrantOffline}
+                      loading={ingestUrlMutation.isPending}
+                    >
+                      Ingest
+                    </StyledButton>
+                  </div>
+                )}
+                <p className="mt-2 text-xs text-text-muted">
+                  A public repository, a repository subdirectory, or a direct link to a document.
+                  Files are added to the collection selected above.
+                </p>
               </div>
             </div>
             <div className="border-t bg-surface-primary p-6">
