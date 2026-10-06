@@ -280,6 +280,9 @@ export default class ServiceSeeder extends BaseSeeder {
           Binds: [
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/filebrowser/files:/srv`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/filebrowser/db:/db`,
+            // The file bridge (contrib/file-bridge): hand-off scripts land here, mounted
+            // read-only at /bridge so the shell panel can run /bridge/send-to-stirling.sh.
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/filebrowser/bridge:/bridge:ro`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/books:/srv/books`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/maps:/srv/maps`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/media:/srv/media`,
@@ -295,9 +298,15 @@ export default class ServiceSeeder extends BaseSeeder {
         // stays, which is the safer default anyway for a read/write/delete file manager.
         // NOTE: FB_PASSWORD must be a bcrypt hash, not plaintext. The value below is the hash of
         // "nomad" (generated via `filebrowser hash nomad`). Login is admin / nomad.
+        // FB_DISABLE_EXEC=false turns the command runner back on (upstream disabled it by
+        // default from v2.33.8 for security, see filebrowser issue 5199). The exposure is
+        // bounded: only command paths allowlisted per user (Settings > User Management >
+        // Commands) run at all, and the bridge scripts live on a read-only mount. The one-time
+        // allowlist step is documented in contrib/file-bridge/README.md.
         Env: [
           'FB_USERNAME=admin',
           'FB_PASSWORD=$2a$10$Dvu3XTiLxvPTzvdOKu6y6.AmadN6Zt0ddLwK.8MQ.RCIQWunWBQXa',
+          'FB_DISABLE_EXEC=false',
         ],
         User: 'root'
       }),
@@ -531,10 +540,19 @@ export default class ServiceSeeder extends BaseSeeder {
         HostConfig: {
           RestartPolicy: { Name: 'unless-stopped' },
           PortBindings: { '8096/tcp': [{ HostPort: '8490' }] },
+          // The boxdocs fix: Jellyfin used to see only storage/media, so media that lived in
+          // the File Browser folders had to be MOVED into media before Jellyfin could index it.
+          // Instead bind File Browser's home root (storage/filebrowser/files, which is /srv in
+          // File Browser) into Jellyfin read-only at /media/boxdocs. Everything the user keeps
+          // in File Browser's home tree is now visible to Jellyfin without moving a single file,
+          // and :ro means Jellyfin can index but never modify it. Verified 2026-10-06 on the
+          // live box: there is no separate boxdocs directory, so the whole files root is bound;
+          // a future boxdocs folder created in File Browser rides along automatically.
           Binds: [
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/jellyfin/config:/config`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/jellyfin/cache:/cache`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/media:/media`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/filebrowser/files:/media/boxdocs:ro`,
           ],
         },
         ExposedPorts: { '8096/tcp': {} },
