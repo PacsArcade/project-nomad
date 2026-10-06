@@ -29,8 +29,32 @@ NOMAD is designed for capable hardware, especially if you want to use the AI fea
 
 **For detailed build recommendations at three price points ($150–$1,000+), see the [Hardware Guide](https://www.projectnomad.us/hardware).**
 
+### How much RAM do I need?
+
+**Without the AI Assistant, the whole stack sits under 1GB.** Measured on a running
+install: the Command Center 241MB, MySQL 444MB, Redis 9MB, Kiwix 101MB, and the
+knowledge base index 155MB. That is why 4GB is a real minimum rather than a
+defensive one.
+
+**The AI is the variable, and it is the model rather than NOMAD.** Ollama idles at
+roughly 1.2GB, and a model needs about its download size resident while it answers,
+so an 8B model at ~4.6GB wants about that much on top. **8GB is workable for a small
+model, 16GB is comfortable, and 32GB is the recommendation if you want to run larger
+ones.**
+
+Where that memory comes from depends on your hardware. With a discrete GPU the model
+loads into VRAM and never touches system RAM, so VRAM is the number that limits which
+models you can run. With an integrated GPU or no GPU at all, it comes out of system
+RAM, which is why a CPU-only box needs more of it.
+
 ### How much storage do I need?
-It depends on what you download:
+
+**To install NOMAD itself: about 5GB, so leave 10GB free.** That covers the
+Command Center and its database, before any content. Adding the AI Assistant
+brings the total to roughly 25GB, because Ollama and a general-purpose model are
+both large.
+
+After that it depends entirely on what you download:
 - Full Wikipedia: ~95GB
 - Khan Academy courses: ~50GB
 - Medical references: ~500MB

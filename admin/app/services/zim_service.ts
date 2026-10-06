@@ -1,4 +1,5 @@
 import {
+  CatalogLanguage,
   ListRemoteZimFilesResponse,
   RawRemoteZimFileEntry,
   RemoteZimFileEntry,
@@ -33,6 +34,8 @@ import { SERVICE_NAMES } from '../../constants/service_names.js'
 import { CollectionManifestService } from './collection_manifest_service.js'
 import { KiwixCatalogService } from './kiwix_catalog_service.js'
 import { KiwixLibraryService } from './kiwix_library_service.js'
+import { RagService } from './rag_service.js'
+import { OllamaService } from './ollama_service.js'
 import type { CategoryWithStatus } from '../../types/collections.js'
 import CustomLibrarySource from '#models/custom_library_source'
 import { assertNotPrivateUrl } from '#validators/common'
@@ -77,10 +80,18 @@ export class ZimService {
     start,
     count,
     query,
+    language = 'eng',
   }: {
     start: number
     count: number
     query?: string
+    /**
+     * ISO-639-3 code to filter the catalog by, or `all` for no filter. Defaults to
+     * English, which is what this browser has always shown -- but it is now a default
+     * the user can change, not a hardcode. English is ~1,300 of the catalog's ~10,900
+     * books, so the filter was hiding the large majority of the library.
+     */
+    language?: string
   }): Promise<ListRemoteZimFilesResponse> {
     // Kiwix returns pages of content unaware of what the user has installed locally. When
     // the installed set is large, a single 12-item Kiwix page can come back with everything
@@ -111,7 +122,8 @@ export class ZimService {
         params: {
           start: currentStart,
           count: KIWIX_PAGE_SIZE,
-          lang: 'eng',
+          // `all` means "no filter", which the catalog expresses by omitting `lang`.
+          ...(language && language !== 'all' ? { lang: language } : {}),
           ...(query ? { q: query } : {}),
         },
         responseType: 'text',
@@ -188,6 +200,62 @@ export class ZimService {
       has_more: currentStart < totalResults,
       total_count: totalResults,
       next_start: currentStart,
+    }
+  }
+
+  /**
+   * The languages the Kiwix catalog actually holds books in, newest count first.
+   *
+   * Sourced live from the catalog rather than a bundled ISO list, so the options are
+   * always exactly what can be browsed, and each carries a real book count. Titles are
+   * the catalog's own endonyms ("français", "中文"), which is what a reader scanning for
+   * their own language recognises.
+   *
+   * Requires internet, like the rest of this browser. Failures return an empty list
+   * rather than throwing: a missing language filter should degrade to "English only",
+   * never take down the page that lists the books.
+   */
+  async listCatalogLanguages(): Promise<CatalogLanguage[]> {
+    const LANGUAGES_URL = 'https://opds.library.kiwix.org/catalog/v2/languages'
+    try {
+      const res = await axios.get(LANGUAGES_URL, { responseType: 'text', timeout: 15000 })
+      const parser = new XMLParser({
+        ignoreAttributes: false,
+        attributeNamePrefix: '',
+        textNodeName: '#text',
+      })
+      const parsed = parser.parse(res.data)
+      const rawEntries = parsed?.feed?.entry
+        ? Array.isArray(parsed.feed.entry)
+          ? parsed.feed.entry
+          : [parsed.feed.entry]
+        : []
+
+      const languages: CatalogLanguage[] = []
+      for (const raw of rawEntries) {
+        if (!raw || typeof raw !== 'object') continue
+        // `dc:language` is the ISO-639-3 code; `thr:count` is how many books carry it.
+        const code = raw['dc:language']
+        const label = raw.title
+        const bookCount = Number(raw['thr:count'])
+        if (typeof code !== 'string' || !code.trim()) continue
+        if (!Number.isFinite(bookCount) || bookCount <= 0) continue
+        languages.push({
+          code: code.trim(),
+          label: typeof label === 'string' && label.trim() ? label.trim() : code.trim(),
+          book_count: bookCount,
+        })
+      }
+
+      languages.sort((a, b) => b.book_count - a.book_count)
+      return languages
+    } catch (error) {
+      logger.warn(
+        `[ZimService] Catalog language list unavailable: ${
+          error instanceof Error ? error.message : error
+        }`
+      )
+      return []
     }
   }
 
@@ -293,6 +361,26 @@ export class ZimService {
         const status = await drugReferenceService.getIngestStatus()
         if (status.phase === 'ready' || status.rowCount > 0) {
           logger.info('[ZimService] Drug dataset already ingested, skipping dispatch.')
+          // Reaching here means no 'dataset' row exists (the installed filter
+          // above would have dropped the resource). A finished ingest that lost
+          // its row write (1.34.0's narrow enum, or a manual ingest) gets one now,
+          // so re-selecting the tier resolves it without waiting for a reboot.
+          if (status.phase === 'ready' && status.lastUpdated) {
+            try {
+              await drugReferenceService.recordInstalledRow({
+                version: status.lastUpdated,
+                collectionRef: categorySlug,
+                fileSizeBytes: null,
+              })
+              logger.info('[ZimService] Backfilled installed_resources row for the drug dataset.')
+            } catch (err) {
+              logger.error(
+                `[ZimService] Failed to backfill drug dataset row: ${
+                  err instanceof Error ? err.message : String(err)
+                }`
+              )
+            }
+          }
           continue
         }
         // DownloadDrugDataJob.dispatch() is idempotent on its deterministic
@@ -658,6 +746,25 @@ export class ZimService {
     }
 
     await deleteFileIfExists(fullPath)
+
+    // Purge this file's Qdrant points and KbIngestState row directly so a
+    // deleted ZIM stops surfacing as a stale search citation immediately,
+    // rather than waiting for the next scanAndSyncStorage reverse sweep to
+    // catch it (#1170). Never touched Qdrant here before — the file's points
+    // and state row would otherwise linger indefinitely.
+    //
+    // Guarded on the AI Assistant being installed at all — otherwise every
+    // delete on an install without it hits _initializeQdrantClient()'s
+    // "offline" throw and logs a misleading error for the common no-AI case.
+    const qdrantInstalled = !!(await this.dockerService.getServiceURL(SERVICE_NAMES.QDRANT))
+    if (qdrantInstalled) {
+      try {
+        const ragService = new RagService(this.dockerService, new OllamaService())
+        await ragService.purgeIndexedSource(fullPath)
+      } catch (err) {
+        logger.error(`[ZimService] Failed to purge knowledge-base entries for ${fullPath}:`, err)
+      }
+    }
 
     // Remove from kiwix library XML so --monitorLibrary stops serving the deleted file
     const kiwixLibraryService = new KiwixLibraryService()

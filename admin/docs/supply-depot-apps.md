@@ -296,3 +296,85 @@ A browser-based client for [MeshCore](https://meshcore.io) radios. MeshCore is a
 **Your data:** There's nothing to set up or store on your NOMAD for this app. Your radio's settings live on the radio itself, and the app's preferences live in your browser. There's no NOMAD folder to manage.
 
 **Works offline:** Fully offline, which is the whole point of MeshCore. The app is served from your NOMAD and talks to your radio directly over USB or Bluetooth, never the internet.
+
+## Translated Library {% #offline-translation %}
+
+Reads the Information Library in another language. Open an article and a **Translate this page** bar appears at the top with a button for each installed language, plus **Original** to switch back. Your choice sticks as you click through to other articles.
+
+**Why this instead of the AI Assistant:** the AI Assistant can translate, but this is roughly 1,600 times faster on the same machine, and it does not need a graphics card, so it works on every NOMAD. It is also more careful with names: asked to translate a page, the AI Assistant will happily translate "Project NOMAD" into another language, and this will not.
+
+**Choosing languages:** French, Spanish and German are set up by default. To add or remove languages:
+
+1. In the **Supply Depot**, open the Translated Library's **Manage** menu and choose **Edit**.
+2. Under **Environment Variables**, find `TRANSLATE_LANGS=fr,es,de`.
+3. Change the list of language codes, separated by commas. For example, `TRANSLATE_LANGS=fr,es,de,sv` adds Swedish.
+4. Click **Save**. The app restarts, downloads any new languages, and adds a button for each one to the **Translate this page** bar.
+
+Adding a language needs an internet connection, and each one takes between about 45 MB and 140 MB of disk. Languages you already have keep working offline. Removing a code from the list does not remove a language you have already downloaded; it stays in `storage/translate/models` and keeps its button.
+
+These 50 languages are available. Chinese is not available yet.
+
+| Language | Code |
+|---|---|
+| Afrikaans | `af` |
+| Arabic | `ar` |
+| Basque | `eu` |
+| Bengali | `bn` |
+| Bosnian | `bs` |
+| Bulgarian | `bg` |
+| Catalan | `ca` |
+| Croatian | `hr` |
+| Czech | `cs` |
+| Danish | `da` |
+| Dutch | `nl` |
+| Estonian | `et` |
+| Finnish | `fi` |
+| French | `fr` |
+| Galician | `gl` |
+| German | `de` |
+| Greek | `el` |
+| Gujarati | `gu` |
+| Hebrew | `he` |
+| Hindi | `hi` |
+| Hungarian | `hu` |
+| Icelandic | `is` |
+| Indonesian | `id` |
+| Italian | `it` |
+| Japanese | `ja` |
+| Kannada | `kn` |
+| Korean | `ko` |
+| Latvian | `lv` |
+| Lithuanian | `lt` |
+| Malay | `ms` |
+| Malayalam | `ml` |
+| Marathi | `mr` |
+| Norwegian | `nb` |
+| Persian | `fa` |
+| Polish | `pl` |
+| Portuguese | `pt` |
+| Romanian | `ro` |
+| Russian | `ru` |
+| Serbian | `sr` |
+| Slovak | `sk` |
+| Slovenian | `sl` |
+| Spanish | `es` |
+| Swedish | `sv` |
+| Tamil | `ta` |
+| Telugu | `te` |
+| Thai | `th` |
+| Turkish | `tr` |
+| Ukrainian | `uk` |
+| Urdu | `ur` |
+| Vietnamese | `vi` |
+
+**First start needs internet.** The language models download when the app first runs, the same as installing any other app. After that it is entirely offline. If you install this while disconnected the app still starts and the library still works, just without translation until it can fetch the models.
+
+**What it does not translate:** tables and infoboxes, the page title in your browser tab, and Kiwix's own search results. Searching also still matches the original language, so look things up in English and translate the article you land on.
+
+**A note on two language buttons:** the library's own toolbar has a globe that changes the *menus* around the page. The bar this app adds changes the *article*. They are different things and sit close together, which is unfortunate but not something we can move.
+
+**Accuracy:** this is machine translation, and it is literal. It is very good for getting the sense of an article. Be careful relying on it for exact medical or safety wording, where the correct term in another language is often not the literal one.
+
+**Your data:** language models live in `storage/translate/models`. Nothing you read is stored or sent anywhere.
+
+**Works offline:** yes, once the models have downloaded.

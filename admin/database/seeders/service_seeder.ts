@@ -4,6 +4,10 @@ import { ModelAttributes } from '@adonisjs/lucid/types/model'
 import env from '#start/env'
 import { SERVICE_NAMES } from '../../constants/service_names.js'
 import { KIWIX_LIBRARY_CMD } from '../../constants/kiwix.js'
+import {
+  mergeContainerConfigPreservingHostPorts,
+  mergeUiLocationPreservingHostPort,
+} from '../../app/utils/service_catalog_merge.js'
 
 type ServiceSeedRecord = Omit<
   ModelAttributes<Service>,
@@ -15,6 +19,8 @@ type ServiceSeedRecord = Omit<
   | 'metadata'
   | 'is_user_modified'
   | 'is_deprecated'
+  | 'is_link_tile'
+  | 'link_color'
   | 'custom_url'
   | 'auto_update_enabled'
   | 'available_update_first_seen_at'
@@ -92,7 +98,7 @@ export default class ServiceSeeder extends BaseSeeder {
       display_order: 3,
       description: 'Local AI chat that runs entirely on your hardware - no internet required',
       icon: 'IconWand',
-      container_image: 'ollama/ollama:0.24.0',
+      container_image: 'ollama/ollama:0.33.3',
       source_repo: 'https://github.com/ollama/ollama',
       container_command: 'serve',
       container_config: JSON.stringify({
@@ -247,7 +253,13 @@ export default class ServiceSeeder extends BaseSeeder {
       display_order: 21,
       description: 'Web-based file manager — browse, upload, download, and organize files on your device',
       icon: 'IconFolderOpen',
-      container_image: 'filebrowser/filebrowser:v2',
+      // Pinned to the verified latest v2.x release, v2.63.23 (2026-07-27; upstream archived
+      // the project 2026-09-01, so this is the final line of releases). Manifest-list digest
+      // sha256:a469ea076d4a1b4b1d86a41d130f2f536cd9da996a2b1fb39c0d7635f9d89b9a. Kept as a
+      // tag pin, not a tag@digest pin: the update checker's parseImageReference splits on the
+      // last colon and would read the digest as the tag, and _checkImageExists matches
+      // RepoTags, which a digest-pulled image does not carry.
+      container_image: 'filebrowser/filebrowser:v2.63.23',
       source_repo: 'https://github.com/filebrowser/filebrowser',
       // Browsable root is storage/filebrowser/files (persistent, so files created at the top level
       // survive updates), with the user-facing content folders mounted in beneath it. We deliberately
@@ -279,7 +291,7 @@ export default class ServiceSeeder extends BaseSeeder {
         // Without an initial password FileBrowser generates a random one and prints it only to
         // the container logs, which a non-technical user can't reach. Seed a known admin/nomad
         // login on first run instead (only applies when the DB doesn't exist yet); the docs tell
-        // users to change it. FB_NOAUTH / --noauth don't work on this image (v2.63.x), so a login
+        // users to change it. FB_NOAUTH / --noauth don't work on this image (v2.63.23), so a login
         // stays, which is the safer default anyway for a read/write/delete file manager.
         // NOTE: FB_PASSWORD must be a bcrypt hash, not plaintext. The value below is the hash of
         // "nomad" (generated via `filebrowser hash nomad`). Login is admin / nomad.
@@ -537,10 +549,55 @@ export default class ServiceSeeder extends BaseSeeder {
       metadata: JSON.stringify({ minMemoryMB: 2048, minDiskMB: 20480 }),
     },
     {
+      service_name: SERVICE_NAMES.TRANSLATE,
+      friendly_name: 'Translated Library',
+      powered_by: 'Bergamot',
+      display_order: 28,
+      description:
+        'Read the Information Library in another language. Machine translation that works offline, on CPU',
+      icon: 'IconWorld',
+      container_image: 'ghcr.io/crosstalk-solutions/project-nomad-translate:0.1.1',
+      source_repo: 'https://github.com/browsermt/bergamot-translator',
+      container_command: null,
+      container_config: JSON.stringify({
+        HostConfig: {
+          RestartPolicy: { Name: 'unless-stopped' },
+          PortBindings: { '8391/tcp': [{ HostPort: '8460' }] },
+          Binds: [`${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/translate/models:/models`],
+        },
+        ExposedPorts: { '8391/tcp': {} },
+        // TRANSLATE_LANGS is the language set fetched on first start, about
+        // 45-140 MB per language for the pair in both directions. Editable via
+        // Manage > Edit; the container re-checks on restart and only fetches
+        // what is missing.
+        Env: [
+          // Reached by container name on the shared NOMAD network, which
+          // DockerService attaches every managed container to. Using the name
+          // rather than a host port means this survives the library being
+          // remapped.
+          'KIWIX=http://nomad_kiwix_server:8080',
+          'TRANSLATE_LANGS=fr,es,de',
+          'WORKERS=8',
+        ],
+      }),
+      ui_location: '8460',
+      installed: false,
+      installation_status: 'idle',
+      is_dependency_service: false,
+      is_custom: false,
+      category: 'education',
+      // Translating an article it cannot fetch is meaningless, so the library
+      // has to be there first.
+      depends_on: SERVICE_NAMES.KIWIX,
+      // Peak RSS measured at 729 MB with three language pairs resident; models
+      // are about 45-140 MB per language on disk.
+      metadata: JSON.stringify({ minMemoryMB: 1536, minDiskMB: 1024 }),
+    },
+    {
       service_name: SERVICE_NAMES.CONVERTX,
       friendly_name: 'ConvertX',
       powered_by: 'ConvertX',
-      display_order: 28,
+      display_order: 29,
       description:
         'Self-hosted file converter - turn documents, images, audio, and video between 1000+ formats (PNG to WebP, DOCX to PDF, and more)',
       icon: 'IconTransform',
@@ -581,6 +638,10 @@ export default class ServiceSeeder extends BaseSeeder {
       'service_name',
       'is_custom',
       'is_user_modified',
+      // Needed to keep an installed app's published host port across catalog sync.
+      'installed',
+      'container_config',
+      'ui_location',
     ])
     const existingServiceMap = new Map(existingServices.map((s) => [s.service_name, s]))
 
@@ -600,12 +661,36 @@ export default class ServiceSeeder extends BaseSeeder {
     for (const service of ServiceSeeder.DEFAULT_SERVICES) {
       const existing = existingServiceMap.get(service.service_name)
       if (existing && !existing.is_custom && !existing.is_user_modified) {
+        // An installed app's published host port belongs to the machine, not the
+        // catalog: it diverges because the default was already taken on that host.
+        // Overwriting it desyncs the row from the running container, which breaks
+        // the Open link now and collides on the next recreate (#1005). Keep the
+        // live host ports and apply every other catalog change. Not-yet-installed
+        // rows take the catalog verbatim, since nothing is running to conflict.
+        const containerConfig = existing.installed
+          ? mergeContainerConfigPreservingHostPorts(
+              service.container_config,
+              existing.container_config
+            )
+          : service.container_config
+        // Derive the link from the config we are about to WRITE, not the live one. When a
+        // catalog change to the container-side port means the live host port was not
+        // preserved above, the link has to follow the catalog too, or the row ships a
+        // container bound to one port and an Open button pointing at another.
+        const uiLocation = existing.installed
+          ? mergeUiLocationPreservingHostPort(
+              service.ui_location,
+              existing.ui_location,
+              containerConfig
+            )
+          : service.ui_location
+
         await Service.query().where('service_name', service.service_name).update({
-          container_config: service.container_config,
+          container_config: containerConfig,
           container_command: service.container_command ?? null,
           metadata: (service as any).metadata ?? null,
           category: service.category,
-          ui_location: service.ui_location,
+          ui_location: uiLocation,
         })
       }
     }

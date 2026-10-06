@@ -1,5 +1,6 @@
 import KVStore from '#models/kv_store'
 import { BenchmarkService } from '#services/benchmark_service'
+import { ContextWindowService } from '#services/context_window_service'
 import { MapService } from '#services/map_service'
 import { OllamaService } from '#services/ollama_service'
 import { SystemService } from '#services/system_service'
@@ -7,6 +8,10 @@ import { getSettingSchema, updateSettingSchema, validateSettingValue } from '#va
 import { inject } from '@adonisjs/core'
 import type { HttpContext } from '@adonisjs/core/http'
 import env from '#start/env'
+import { parseMinRelevance } from '../utils/misc.js'
+import { isRelevanceCheckEnabled } from '../utils/relevance_judge.js'
+import { parseResponseStyle } from '../utils/sampler.js'
+import { RAG_MIN_FINAL_SCORE } from '../../constants/ollama.js'
 
 @inject()
 export default class SettingsController {
@@ -14,7 +19,8 @@ export default class SettingsController {
     private systemService: SystemService,
     private mapService: MapService,
     private benchmarkService: BenchmarkService,
-    private ollamaService: OllamaService
+    private ollamaService: OllamaService,
+    private contextWindowService: ContextWindowService
   ) {}
 
   async system({ inertia }: HttpContext) {
@@ -71,6 +77,25 @@ export default class SettingsController {
     const remoteOllamaUrl = await KVStore.getValue('ai.remoteOllamaUrl')
     const ollamaFlashAttention = await KVStore.getValue('ai.ollamaFlashAttention')
     const autoThinking = await KVStore.getValue('ai.autoThinking')
+    const tasksModel = await KVStore.getValue('ai.tasksModel')
+    const ragEnabled = await KVStore.getValue('rag.enabled')
+    const contextWindow = await KVStore.getValue('ai.contextWindow')
+    const minRelevance = await KVStore.getValue('rag.minRelevance')
+    const relevanceCheck = await KVStore.getValue('rag.relevanceCheck')
+    const responseStyle = await KVStore.getValue('ai.responseStyle')
+    // Resolved window per installed model, so the setting shows what "Auto"
+    // actually produced rather than leaving the user to guess. Best-effort:
+    // a model whose metadata can't be read simply doesn't get a badge.
+    const resolvedContextWindows: Record<string, number> = {}
+    await Promise.all(
+      (installedModels || []).map(async (model) => {
+        try {
+          resolvedContextWindows[model.name] = await this.contextWindowService.windowFor(model.name)
+        } catch {
+          /* leave unset */
+        }
+      })
+    )
     return inertia.render('settings/models', {
       models: {
         availableModels: availableModels?.models || [],
@@ -81,7 +106,18 @@ export default class SettingsController {
           remoteOllamaUrl: remoteOllamaUrl ?? '',
           ollamaFlashAttention: ollamaFlashAttention ?? true,
           autoThinking: autoThinking ?? false,
+          tasksModel: tasksModel ?? '',
+          ragEnabled: ragEnabled ?? true,
+          contextWindow: contextWindow ?? 'auto',
+          // Sent as the resolved number so the select can match an option
+          // without duplicating the "unset means the default" rule in the UI.
+          minRelevance: parseMinRelevance(minRelevance, RAG_MIN_FINAL_SCORE),
+          relevanceCheck: isRelevanceCheckEnabled(relevanceCheck),
+          // Resolved rather than raw, for the same reason: unset means 'auto',
+          // and the select shouldn't have to know that.
+          responseStyle: parseResponseStyle(responseStyle),
         },
+        resolvedContextWindows,
       },
     })
   }

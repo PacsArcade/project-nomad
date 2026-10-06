@@ -30,6 +30,7 @@ import type {
 } from '../../types/benchmark.js'
 import KVStore from '#models/kv_store'
 import { normalizeArchitecture, deriveOsName } from '../utils/platform_metadata.js'
+import { isUnresolvedGpuModel } from '../utils/gpu_model.js'
 import { getFreeBytes } from '../utils/image_disk_preflight.js'
 import { readFile } from 'node:fs/promises'
 import { randomUUID, createHmac } from 'node:crypto'
@@ -186,25 +187,8 @@ function isSelfHostedOllamaUrl(rawUrl: string): boolean {
   return false
 }
 
-/**
- * Is this GPU "model" a placeholder rather than a real name?
- *
- * systeminformation resolves PCI ids against the container's pci.ids database.
- * When a card is newer than that file it reports the raw id verbatim — an RTX
- * 5060 comes back as "Device 2d05". Vendor detection still succeeds, so these
- * strings otherwise pass as legitimate model names and reach the leaderboard.
- *
- * Matches the "Device <hex>" shape plus the empty/unknown cases. Deliberately
- * narrow: it must never reject a real product name, and no shipping GPU is
- * called "Device" followed by four hex digits.
- */
-function isUnresolvedGpuModel(model: string): boolean {
-  const s = model.trim()
-  if (s === '') return true
-  if (/^device\s+[0-9a-f]{4}$/i.test(s)) return true
-  if (/^unknown$/i.test(s)) return true
-  return false
-}
+// Moved to app/utils/gpu_model.ts so the Settings > System display path can
+// share the same definition — see the note there (#1196).
 
 // Minimum free disk required before pulling the AI model on first run. llama3.1:8b
 // (Q4) is ~4.9 GB; this covers the model plus headroom for the transient sysbench

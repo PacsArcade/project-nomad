@@ -1,5 +1,5 @@
 <div align="center">
-<img src="admin/public/project_nomad_logo.webp" width="200" height="200"/>
+<img src="admin/public/nomad-primary.svg" width="200" alt="Project NOMAD"/>
 
 # Project NOMAD
 ### Knowledge That Never Goes Offline
@@ -16,6 +16,8 @@ Project NOMAD is a self-contained, offline-first knowledge and education server 
 
 ## Installation & Quickstart
 Project NOMAD can be installed on any Debian-based operating system (we recommend Ubuntu 26.04 LTS; 24.04 LTS and Debian 12 are also supported). Installation is completely terminal-based, and all tools and resources are designed to be accessed through the browser, so there's no need for a desktop environment if you'd rather setup NOMAD as a "server" and access it through other clients.
+
+**Before you start:** NOMAD itself needs about **5 GB of disk and under 1 GB of RAM**. The offline content you add afterwards is what actually fills a drive, and the AI Assistant is what drives the memory requirement up. See [Device Requirements](#device-requirements) for both, and the [FAQ](https://www.projectnomad.us/docs/faq) for individual content sizes.
 
 *Note: sudo/root privileges are required to run the install script*
 
@@ -75,10 +77,12 @@ At its core, however, NOMAD is still very lightweight. For a barebones installat
 
 #### Minimum Specs
 - Processor: 2 GHz dual-core processor or better
-- RAM: 4GB system memory
-- Storage: At least 5 GB free disk space
+- RAM: 4GB system memory (the whole stack without AI runs in under 1 GB)
+- Storage: At least 5 GB free disk space (plan for 10 GB to install comfortably)
 - OS: Debian-based (Ubuntu 26.04 LTS recommended)
 - Stable internet connection (required during install only)
+
+Adding the AI Assistant brings the install to roughly **25 GB**, because Ollama and a general-purpose model are both large, and a model needs about its download size in memory while it answers. That memory comes from VRAM if you have a discrete GPU and from system RAM if you do not, which is the single biggest reason the figures below are so much higher.
 
 To run LLMs and other included AI tools:
 

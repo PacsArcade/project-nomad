@@ -504,12 +504,20 @@ router
       summary: "Update a file's knowledge collection",
       tags: ['rag'],
     })
+    documented(router.post('/files/active', [RagController, 'setFileActive']), {
+      summary: "Toggle a file's active (searchable) state",
+      tags: ['rag'],
+    })
     documented(router.post('/rename-collection', [RagController, 'renameKnowledgeCollection']), {
       summary: 'Rename a knowledge collection',
       tags: ['rag'],
     })
     documented(router.post('/delete-collection', [RagController, 'deleteKnowledgeCollection']), {
       summary: 'Delete a knowledge collection',
+      tags: ['rag'],
+    })
+    documented(router.post('/collection-active', [RagController, 'setKnowledgeCollectionActive']), {
+      summary: "Bulk-toggle every file in a knowledge collection's active (searchable) state",
       tags: ['rag'],
     })
   })
@@ -593,6 +601,18 @@ router
     })
     documented(router.get('/services/custom/:name', [SystemController, 'getCustomApp']), {
       summary: 'Get a custom app',
+      tags: ['system'],
+    })
+    documented(router.post('/services/links', [SystemController, 'createLinkTile']), {
+      summary: 'Create a dashboard link tile',
+      tags: ['system'],
+    })
+    documented(router.put('/services/links', [SystemController, 'updateLinkTile']), {
+      summary: 'Update a dashboard link tile',
+      tags: ['system'],
+    })
+    documented(router.delete('/services/links', [SystemController, 'deleteLinkTile']), {
+      summary: 'Delete a dashboard link tile',
       tags: ['system'],
     })
     documented(router.put('/services/custom-url', [SystemController, 'setServiceCustomUrl']), {
@@ -680,6 +700,10 @@ router
       summary: 'List remote ZIM files',
       tags: ['zim'],
       query: listRemoteZimValidator,
+    })
+    documented(router.get('/catalog-languages', [ZimController, 'listCatalogLanguages']), {
+      summary: 'List the languages the Kiwix catalog holds books in',
+      tags: ['zim'],
     })
     documented(router.get('/curated-categories', [ZimController, 'listCuratedCategories']), {
       summary: 'List curated ZIM categories',
