@@ -2,9 +2,17 @@ import * as assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DateTime } from 'luxon'
 
-import { AppAutoUpdateService } from '../../app/services/app_auto_update_service.js'
-import { ContainerRegistryService } from '../../app/services/container_registry_service.js'
-import { isWithinWindow } from '../../app/utils/update_window.js'
+import { bootServicesApp } from './helpers/boot_services_app.js'
+
+// Both services touch the `@adonisjs/core/services/logger` singleton at
+// module scope, which throws without a booted app under plain `node --test`.
+// Boot the minimal app first, then dynamic-import the modules (a static
+// import would evaluate them before the boot finishes).
+await bootServicesApp()
+const { AppAutoUpdateService } = await import('../../app/services/app_auto_update_service.js')
+const { ContainerRegistryService } =
+  await import('../../app/services/container_registry_service.js')
+const { isWithinWindow } = await import('../../app/utils/update_window.js')
 
 // appEligibility only touches ContainerRegistryService.parseImageReference (pure,
 // offline), so the other constructor deps are irrelevant for these tests.
