@@ -25,7 +25,8 @@ The WanderPac bridge pattern in one folder. Two carriers run these scripts:
   name on the NOMAD network.
 - `send-to-convertx.sh FILE EXT,CONVERTER` drives ConvertX's
   cookie-session web flow (ConvertX v0.19.0 has no public API). It needs
-  curl. Set `CONVERTX_URL`; the copyparty catalog entry wires it to the
+  curl, or python3 when curl is absent (the copyparty container ships
+  python3, so the hook path works there). Set `CONVERTX_URL`; the copyparty catalog entry wires it to the
   ConvertX service name. ConvertX must run with
   `ALLOW_UNAUTHENTICATED=true` and `HTTP_ALLOWED=true`; the seeded
   ConvertX entry keeps accounts on, so this hand-off needs that one-time

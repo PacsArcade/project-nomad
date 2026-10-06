@@ -14,6 +14,7 @@ import {
   CALIBRE_EMPTY_LIBRARY_ASSET_PATH,
   VAULTWARDEN_STORAGE_PATH,
   MESHCORE_WEB_STORAGE_PATH,
+  COPYPARTY_STORAGE_PATH,
   MEDIA_STORAGE_PATH,
   JELLYFIN_MEDIA_SUBFOLDERS,
 } from '../utils/fs.js'
@@ -733,6 +734,15 @@ export class DockerService {
         )
       }
 
+      if (service.service_name === SERVICE_NAMES.COPYPARTY) {
+        await this._runPreinstallActions__Copyparty()
+        this._broadcast(
+          service.service_name,
+          'preinstall-complete',
+          `Pre-install actions for copyparty completed successfully.`
+        )
+      }
+
       // GPU-aware configuration for Ollama
       let finalImage = service.container_image
       let gpuHostConfig = containerConfig?.HostConfig || {}
@@ -1283,6 +1293,143 @@ export class DockerService {
         SERVICE_NAMES.MESHCORE_WEB,
         'preinstall-error',
         `Failed to prepare MeshCore Web: ${error.message}`
+      )
+      throw new Error(`Pre-install action failed: ${error.message}`)
+    }
+  }
+
+  /**
+   * copyparty reads its whole setup from /cfg/copyparty.conf: accounts, the served
+   * volume, the xau upload hook, and the --html-head theme injection. We generate
+   * that config on install with a RANDOM per-box password (the public repo seeds
+   * no working credential; guard G3 of the T-585 security read), mode 0600, mounted
+   * read-only at /cfg. The theme head file and the file-bridge hook scripts are
+   * copied from the admin image assets (prod: /app/assets, baked by the Dockerfile;
+   * dev: the repo checkout's theme/ and contrib/ dirs) into storage and mounted
+   * read-only at /theme and /hooks, OUTSIDE the served /w tree (guards G4/G5).
+   * Idempotent: an existing copyparty.conf is never overwritten, so operator edits
+   * (more accounts, changed password) survive reinstalls; hooks and theme refresh
+   * every install so script fixes reach existing boxes.
+   */
+  private async _runPreinstallActions__Copyparty(): Promise<void> {
+    const appDir = join(process.cwd(), COPYPARTY_STORAGE_PATH)
+    const filesDir = join(appDir, 'files')
+    const configDir = join(appDir, 'config')
+    const hooksDir = join(appDir, 'hooks')
+    const themeDir = join(appDir, 'theme')
+    const stateDir = join(appDir, 'state')
+    const confPath = join(configDir, 'copyparty.conf')
+
+    this._broadcast(
+      SERVICE_NAMES.COPYPARTY,
+      'preinstall',
+      `Running pre-install actions for copyparty...`
+    )
+
+    try {
+      await mkdir(filesDir, { recursive: true })
+      await mkdir(configDir, { recursive: true })
+      await mkdir(hooksDir, { recursive: true })
+      await mkdir(themeDir, { recursive: true })
+      await mkdir(stateDir, { recursive: true })
+
+      const assetRoots = [
+        join(process.cwd(), 'assets', 'copyparty'), // production admin image
+        join(process.cwd(), '..'), // dev: repo checkout (theme/, contrib/)
+      ]
+      const copyAsset = async (candidates: string[], dest: string, mode: number) => {
+        for (const src of candidates) {
+          try {
+            await access(src)
+            await copyFile(src, dest)
+            await chmod(dest, mode)
+            return
+          } catch {
+            // try the next candidate root
+          }
+        }
+        throw new Error(`asset not found in any known root: ${candidates.join(', ')}`)
+      }
+
+      const hookScripts = ['on-upload.sh', 'send-to-stirling.sh', 'send-to-convertx.sh']
+      for (const script of hookScripts) {
+        await copyAsset(
+          assetRoots.map((root) =>
+            root.endsWith('copyparty')
+              ? join(root, 'file-bridge', script)
+              : join(root, 'contrib', 'file-bridge', script)
+          ),
+          join(hooksDir, script),
+          0o755
+        )
+      }
+
+      await copyAsset(
+        assetRoots.map((root) =>
+          root.endsWith('copyparty')
+            ? join(root, 'theme', 'head.html')
+            : join(root, 'theme', 'copyparty', 'head.html')
+        ),
+        join(themeDir, 'head.html'),
+        0o444
+      )
+
+      try {
+        await access(confPath)
+        this._broadcast(
+          SERVICE_NAMES.COPYPARTY,
+          'preinstall',
+          `copyparty config already exists, keeping it (operator-owned).`
+        )
+      } catch {
+        // First install: random password, argon2-hashed in memory by copyparty
+        // (ah-alg), written 0600. The operator reads it from this file on the
+        // box; it is never broadcast or logged.
+        const password = randomBytes(18).toString('base64url')
+        const conf = [
+          '# copyparty on NOMAD (catalog entry nomad_copyparty)',
+          '# Generated on install with a random per-box password. The installer',
+          '# never overwrites this file; edit it to add accounts or change the',
+          '# password. Only the HTTP/WebDAV listener is configured here; no',
+          '# FTP/SFTP/TFTP/SMB.',
+          '',
+          '[global]',
+          '  e2dsa        # file indexing and filesystem scanning',
+          '  e2ts         # multimedia indexing',
+          '  ansi         # colors in log messages',
+          '  no-robots    # ask search engines to stay out',
+          '  ui-norepl    # hide the pi button (a javascript console, not a logo)',
+          '  html-head: @/theme/head.html  # the arcade theme, read-only mount',
+          '  ah-alg: argon2                # password hashing',
+          '',
+          '[accounts]',
+          `  nomad: ${password}`,
+          '',
+          '[/]           # the webroot volume shares /w',
+          '  /w',
+          '  accs:',
+          '    rwmd: nomad   # accounts only; anonymous gets nothing',
+          '  flags:',
+          '    e2ds        # filesystem scanning for this volume',
+          '    # the no-click bridge: after every upload, fork the hook (the',
+          '    # upload never blocks on it), one at a time, 120 s timeout',
+          '    xau: f,c1,t120,/hooks/on-upload.sh',
+          '',
+        ].join('\n')
+        await writeFile(confPath, conf, { mode: 0o600 })
+        await chmod(confPath, 0o600)
+      }
+
+      this._broadcast(
+        SERVICE_NAMES.COPYPARTY,
+        'preinstall',
+        `copyparty config, theme, and bridge hooks are ready.`
+      )
+    } catch (error: any) {
+      this._broadcast(
+        SERVICE_NAMES.COPYPARTY,
+        'preinstall-error',
+        `Failed to prepare copyparty: ${error.message}`
       )
       throw new Error(`Pre-install action failed: ${error.message}`)
     }

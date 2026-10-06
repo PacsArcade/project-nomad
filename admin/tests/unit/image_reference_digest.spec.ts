@@ -8,7 +8,8 @@ import { bootServicesApp } from './helpers/boot_services_app.js'
 // Boot the minimal app first, then dynamic-import the service (a static
 // import would evaluate it before the boot finishes).
 await bootServicesApp()
-const { ContainerRegistryService } = await import('../../app/services/container_registry_service.js')
+const { ContainerRegistryService } =
+  await import('../../app/services/container_registry_service.js')
 
 // ── Digest-pinned image references (T-585) ─────────────────────────────────
 // A "name:tag@sha256:..." pin must keep its real tag so version checks still

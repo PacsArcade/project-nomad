@@ -17,7 +17,9 @@ export async function bootServicesApp(): Promise<void> {
   const app = new AppFactory().create(new URL('../../', import.meta.url), () => {})
   await app.init()
   app.container.bindValue('logger', new LoggerFactory().create())
-  setApp(app)
+  // The factory's Application is structurally the app service; the cast only
+  // papers over the container-bindings generic.
+  setApp(app as any)
   await app.boot()
   booted = true
 }
