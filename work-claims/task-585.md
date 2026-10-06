@@ -32,3 +32,16 @@ wanderpac repo.
 The throwaway proof (catalog-definition container on lane port 5850,
 throwaway Stirling on 5851, throwaway ConvertX on 5852) and its numbers
 live in the kimi house outbox `outbox/task-585/SUMMARY.md`.
+
+Proof outcome (2026-10-06, throwaway lane): BOTH bridges proven live.
+A comma-named PDF uploaded as nomad produced its Stirling-compressed copy
+beside it with zero clicks (Stirling 3.1.0), and a comma-named PNG
+produced its ConvertX WebP copy beside it (ConvertX v0.19.0, driven from
+inside the copyparty container over the python3 path, no curl). The
+failure path is proven too: with Stirling stopped, the upload kept a
+plain-words `NAME.bridge-failed` marker beside it. Finding 5 coupling,
+stated plainly: the ConvertX hand-off only works when ConvertX runs with
+`ALLOW_UNAUTHENTICATED=true` and `HTTP_ALLOWED=true`; the seeded ConvertX
+catalog entry keeps accounts on, so the operator flips that once via
+Manage > Edit on ConvertX before the hook path can work. The Stirling
+hand-off needs no such flip.

@@ -25,9 +25,15 @@
 # Flow (from ConvertX v0.19.0 source):
 #   GET /            sets the auth and jobId cookies and creates a job
 #   POST /upload     multipart field "file"
-#   POST /convert    fields convert_to="EXT,CONVERTER", file_names='["FILE"]'
+#   POST /convert    application/x-www-form-urlencoded fields
+#                    convert_to="EXT,CONVERTER", file_names='["FILE"]'
 #                    answers 302 to /results/JOBID while converting in background
+#                    (multipart is NOT accepted here: Elysia JSON-coerces
+#                    file_names out of a string and the schema rejects it
+#                    with 422; the ConvertX web form itself posts urlencoded)
 #   GET /archive/JOBID   tar of every output file once the job completes
+#                    (a still-pending job answers a valid but EMPTY tar, so
+#                    poll until the listing holds at least one real file)
 #
 # Filenames: the file rides to ConvertX on stdin (curl -F "file=@-" < file)
 # under a SANITIZED copy of its real name: quotes, backslashes, commas,
@@ -103,10 +109,10 @@ if command -v curl >/dev/null 2>&1; then
     -F "file=@-;filename=$safe_base" \
     "$CONVERTX_URL/upload" < "$file" || fail "upload to ConvertX failed"
 
-  # The 302 target carries the job id.
+  # The 302 target carries the job id. Urlencoded, like the web form.
   location=$(curl -s -b "$jar" -c "$jar" -o /dev/null -w '%{redirect_url}' \
-    -F "convert_to=$pair" \
-    -F "file_names=[\"$safe_base\"]" \
+    --data-urlencode "convert_to=$pair" \
+    --data-urlencode "file_names=[\"$safe_base\"]" \
     "$CONVERTX_URL/convert")
 
   job=${location##*/}
@@ -118,7 +124,10 @@ if command -v curl >/dev/null 2>&1; then
   ready=0
   while [ $tries -lt 30 ]; do
     if curl -s -b "$jar" -o "$out" "$CONVERTX_URL/archive/$job" && [ -s "$out" ]; then
-      if tar tf "$out" >/dev/null 2>&1; then
+      # A still-pending job answers a valid but EMPTY tar (just "./"), so a
+      # clean listing is not enough: require at least one non-directory
+      # member before calling the job done.
+      if tar tf "$out" 2>/dev/null | grep -qv '/$'; then
         ready=1
         break
       fi
@@ -139,6 +148,7 @@ import http.cookiejar
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 file_path, safe_base, pair, out_path = sys.argv[1:5]
@@ -189,16 +199,15 @@ except Exception as exc:
     sys.stderr.write("send-to-convertx: upload to ConvertX failed: %s\n" % exc)
     sys.exit(1)
 
-# /convert takes only form fields, no file part.
-boundary = "----wanderpac-bridge-py"
-body = b""
-for key, val in [("convert_to", pair), ("file_names", '["%s"]' % safe_base)]:
-    body += ("--%s\r\n" % boundary).encode()
-    body += ('Content-Disposition: form-data; name="%s"\r\n\r\n' % key).encode()
-    body += (str(val) + "\r\n").encode()
-body += ("--%s--\r\n" % boundary).encode()
+# /convert takes only form fields, urlencoded like the web form (multipart
+# is rejected with 422; see the header comment).
+form = urllib.parse.urlencode(
+    {"convert_to": pair, "file_names": '["%s"]' % safe_base}
+).encode()
 req = urllib.request.Request(
-    base_url + "/convert", data=body, headers={"Content-Type": ctype}
+    base_url + "/convert",
+    data=form,
+    headers={"Content-Type": "application/x-www-form-urlencoded"},
 )
 try:
     opener_noredirect.open(req, timeout=60)
@@ -225,9 +234,12 @@ for _ in range(30):
             with open(out_path, "wb") as fh:
                 fh.write(blob)
             try:
-                with tarfile.open(out_path):
-                    print(job)
-                    sys.exit(0)
+                with tarfile.open(out_path) as tf:
+                    # A still-pending job answers a valid but EMPTY tar
+                    # (just "./"); require a real file member.
+                    if any(m.isfile() for m in tf.getmembers()):
+                        print(job)
+                        sys.exit(0)
             except tarfile.TarError:
                 pass
     except Exception:

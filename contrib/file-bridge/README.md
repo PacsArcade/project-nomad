@@ -24,7 +24,8 @@ The WanderPac bridge pattern in one folder. Two carriers run these scripts:
   address; the copyparty catalog entry wires it to the Stirling service
   name on the NOMAD network.
 - `send-to-convertx.sh FILE EXT,CONVERTER` drives ConvertX's
-  cookie-session web flow (ConvertX v0.19.0 has no public API). It needs
+  cookie-session web flow (verified live against ConvertX v0.19.0, which
+  has no public API). It needs
   curl, or python3 when curl is absent (the copyparty container ships
   python3, so the hook path works there). Set `CONVERTX_URL`; the copyparty catalog entry wires it to the
   ConvertX service name. ConvertX must run with
