@@ -213,7 +213,7 @@ export default class ServiceSeeder extends BaseSeeder {
       display_order: 20,
       description: 'Locally-hosted PDF manipulation tool — merge, split, compress, convert, and more',
       icon: 'IconFileDescription',
-      container_image: 'ghcr.io/stirling-tools/s-pdf:2.13.1',
+      container_image: 'ghcr.io/stirling-tools/s-pdf:3.1.0',
       source_repo: 'https://github.com/Stirling-Tools/Stirling-PDF',
       container_command: null,
       container_config: JSON.stringify({

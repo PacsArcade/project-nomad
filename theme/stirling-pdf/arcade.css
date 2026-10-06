@@ -1,12 +1,14 @@
 /*
  * arcade.css, the WanderPac arcade theme for Stirling PDF.
  *
- * What this is: a drop-in dark theme for Stirling PDF v2 (verified against
- * image ghcr.io/stirling-tools/s-pdf:2.13.1). Dark glass surfaces lit by
- * ember, crisp pixel-cut edges, and a block motif: panels as blocks,
- * progress as stacked blocks, tiles that snap to an 8 px grid. Dark only.
- * There is no light theme, ever; this file renders the arcade dark look in
- * both of Stirling's color schemes.
+ * What this is: a drop-in dark theme for Stirling PDF, verified against
+ * image ghcr.io/stirling-tools/s-pdf:3.1.0 (digest
+ * sha256:b5b9e400c086e5334a4947a0d7cd589808f743f29267d7f41c18200cf4bc48b4,
+ * the latest release as of 2026-10-06; earlier verified against 2.13.1).
+ * Dark glass surfaces lit by ember, crisp pixel-cut edges, and a block
+ * motif: panels as blocks, progress as stacked blocks, tiles that snap to
+ * an 8 px grid. Dark only. There is no light theme, ever; this file
+ * renders the arcade dark look in both of Stirling's color schemes.
  *
  * Where it goes (Stirling's documented UI Customisation recipe):
  *   1. Put this file at customFiles/static/arcade.css. Stirling serves it
@@ -33,6 +35,16 @@
  * PacsArcade/wanderpac, lane T-572). Derived steps (ramps Stirling's
  * component library needs between the ruled values) are marked DERIVED.
  *
+ * V3 note: Stirling v3 re-architected its frontend theming around a
+ * semantic token layer (--c-*, see its core/theme/README.md) fed by
+ * palette primitives, with the old --bg-x and --text-x vocabulary being
+ * phased out. This theme maps onto the --c-* layer first; the legacy
+ * vocabulary is still overridden where it survives, so phasing-out
+ * components follow too. The mapping selectors key on all four theme
+ * attributes Stirling sets on <html> (data-app-theme, data-accent,
+ * data-mantine-color-scheme, data-theme), which out-specifies every
+ * upstream block while leaving the attributes themselves untouched.
+ *
  * License: Apache License 2.0, the same license as the NOMAD project-nomad
  * repository this file ships with.
  */
@@ -42,10 +54,13 @@
 :root {
   /* The darks. ground is the page itself. ground-raised and ground-overlay
      are panels sitting on it, each one step lighter, like blocks stacked
-     on a table. well sinks below the ground for inputs. */
+     on a table. ground-lift is one more step up for cards on cards
+     (DERIVED, Stirling v3 has four elevation rungs). well sinks below the
+     ground for inputs. */
   --arcade-ground: #0A0907;
   --arcade-ground-raised: #17130D;
   --arcade-ground-overlay: #1E1911;
+  --arcade-ground-lift: #292115;
   --arcade-well: #060403;
 
   /* Lines. line is the default border, line-strong when an edge needs to
@@ -68,9 +83,8 @@
   --arcade-ember-dim: #C24E00;
   --arcade-ember-glow: rgba(255, 100, 0, 0.35);
 
-  /* Ember ramp (DERIVED): Stirling's component library asks for ten accent
-     steps, dark scheme reads the dark end for fills and the bright end for
-     text and hover. These walk from near-black to bright ember. */
+  /* Ember ramp (DERIVED): Stirling's component library asks for accent
+     steps between near-black and bright ember. */
   --arcade-ember-050: #2A1503;
   --arcade-ember-100: #3D1E04;
   --arcade-ember-200: #572A06;
@@ -131,7 +145,7 @@
   --arcade-radius-button: 999px;
   --arcade-radius-none: 0px;
 
-  /* Focus. A keyboard focus ring is an ember ring with a dark gap, so it
+  /* Focus. A keyboard focus ring is an ember ring with the dark gap, so it
      reads on every ground. */
   --arcade-focus-ring: 0 0 0 2px #0A0907, 0 0 0 4px #FF6400;
 
@@ -144,84 +158,65 @@
 
 
 /* ---------------------------------------------------------------------- */
-/* Mapping: Stirling's own theme variables read the arcade values.         */
-/* html[data-mantine-color-scheme] wins over Stirling's :root and over its */
-/* per-scheme blocks on specificity, so the arcade look holds in both the  */
-/* dark and the light scheme setting. There is no light theme, ever.       */
+/* Mapping A: Stirling v3's semantic token layer (--c-*) reads the arcade  */
+/* values. Keying on all four theme attributes out-specifies every         */
+/* upstream block (the strongest upstream block uses three), and this one  */
+/* block matches both color schemes: there is no light theme, ever.        */
 /* ---------------------------------------------------------------------- */
 
-html[data-mantine-color-scheme] {
-  /* Grounds and surfaces */
-  --bg-background: var(--arcade-ground);
-  --bg-surface: var(--arcade-ground-overlay);
-  --bg-raised: var(--arcade-ground-raised);
-  --bg-muted: var(--arcade-ground-raised);
-  --bg-toolbar: var(--arcade-ground-raised);
-  --bg-file-manager: var(--arcade-ground-raised);
-  --bg-file-list: var(--arcade-ground-overlay);
-  --mantine-color-body: var(--arcade-ground);
+html[data-app-theme][data-accent][data-mantine-color-scheme][data-theme] {
+  /* Surfaces, canvas to lift, plus wells and modals */
+  --c-bg: var(--arcade-ground);
+  --c-bg-raised: var(--arcade-ground-raised);
+  --c-surface: var(--arcade-ground-overlay);
+  --c-surface-raised: var(--arcade-ground-lift);
+  --c-surface-sunken: var(--arcade-well);
+  --c-input-bg: var(--arcade-well);
+  --c-modal-surface: var(--arcade-ground-overlay);
+  --c-hover: var(--arcade-ground-overlay);
+  --c-active: var(--arcade-line);
+  --c-overlay: rgba(0, 0, 0, 0.6);
 
   /* Text */
-  --text-primary: var(--arcade-bone);
-  --text-secondary: var(--arcade-bone-soft);
-  --text-muted: var(--arcade-muted);
-  --text-brand: var(--arcade-bone);
-  --text-brand-accent: var(--arcade-ember);
-  --accent-interactive: var(--arcade-ember);
-  --text-instruction: var(--arcade-bone);
-  --search-text-and-icon-color: var(--arcade-muted);
-  --tools-text-and-icon-color: var(--arcade-bone);
+  --c-text: var(--arcade-bone);
+  --c-text-muted: var(--arcade-bone-soft);
+  --c-text-subtle: var(--arcade-muted);
+  --c-text-on-primary: var(--arcade-ground);
+
+  /* Buttons. Solid actions are the ember button with dark text (6.7:1,
+     the measured pair); secondary is glass on the grounds. */
+  --c-btn-solid: var(--arcade-ember);
+  --c-btn-inverse: var(--arcade-ground);
+  --c-btn-secondary: var(--arcade-ground-overlay);
+  --c-btn-secondary-border: var(--arcade-line);
 
   /* Lines */
-  --border-subtle: var(--arcade-glass-border);
-  --border-default: var(--arcade-line);
-  --border-strong: var(--arcade-line-strong);
+  --c-border: var(--arcade-line);
+  --c-border-subtle: var(--arcade-glass-border);
+  --c-border-strong: var(--arcade-line-strong);
 
-  /* Hover and active grounds */
-  --hover-bg: var(--arcade-ground-overlay);
-  --active-bg: var(--arcade-line);
-  --automation-entry-hover-bg: var(--arcade-ground-overlay);
+  /* The one accent. Fills are ember, accent text takes the brighter step
+     so it reads on the dark grounds. */
+  --c-primary: var(--arcade-ember);
+  --c-primary-hover: var(--arcade-ember-bright);
+  --c-primary-subtle: rgba(255, 100, 0, 0.16);
+  --c-accent-text: var(--arcade-ember-bright);
+  --c-accent-fg: var(--arcade-ember);
+  --c-accent-solid: var(--arcade-ember-dim);
 
-  /* The accent ramp: Stirling's blue primary becomes the arcade ember. */
-  --color-primary-50: var(--arcade-ember-050);
-  --color-primary-100: var(--arcade-ember-100);
-  --color-primary-200: var(--arcade-ember-200);
-  --color-primary-300: var(--arcade-ember-300);
-  --color-primary-400: var(--arcade-ember-400);
-  --color-primary-500: var(--arcade-ember-500);
-  --color-primary-600: var(--arcade-ember-600);
-  --color-primary-700: var(--arcade-ember-700);
-  --color-primary-800: var(--arcade-ember-800);
-  --color-primary-900: var(--arcade-ember-900);
+  /* States */
+  --c-success: var(--arcade-green);
+  --c-danger: var(--arcade-danger);
 
-  /* The gray ramps, warm dark in both triplets (Tailwind) and hex. */
-  --gray-50: 6 4 3;
-  --gray-100: 10 9 7;
-  --gray-200: 23 19 13;
-  --gray-300: 30 25 17;
-  --gray-400: 51 44 34;
-  --gray-500: 74 65 51;
-  --gray-600: 122 112 96;
-  --gray-700: 168 162 150;
-  --gray-800: 207 201 188;
-  --gray-900: 237 233 224;
-  --color-gray-50: var(--arcade-gray-050);
-  --color-gray-100: var(--arcade-gray-100);
-  --color-gray-200: var(--arcade-gray-200);
-  --color-gray-300: var(--arcade-gray-300);
-  --color-gray-400: var(--arcade-gray-400);
-  --color-gray-500: var(--arcade-gray-500);
-  --color-gray-600: var(--arcade-gray-600);
-  --color-gray-700: var(--arcade-gray-700);
-  --color-gray-800: var(--arcade-gray-800);
-  --color-gray-900: var(--arcade-gray-900);
+  /* File card headers and the onboarding hero, warmed to the grounds. */
+  --c-file-header-resting: var(--arcade-ground-overlay);
+  --c-onboarding-hero: linear-gradient(155deg, var(--arcade-ground-overlay) 0%, var(--arcade-ground-raised) 55%, var(--arcade-ember-100) 100%);
+  --c-onboarding-hero-tile: var(--arcade-ground-raised);
 
-  /* Tailwind semantic slots */
-  --surface: 30 25 17;
-  --background: 10 9 7;
-  --border: 51 44 34;
-
-  /* The component library's dark scale, remapped to the warm ramp. */
+  /* The component library follows. */
+  --mantine-color-body: var(--arcade-ground);
+  --mantine-color-default: var(--arcade-ground-overlay);
+  --mantine-color-default-hover: var(--arcade-ground-lift);
   --mantine-color-dark-0: var(--arcade-bone);
   --mantine-color-dark-1: var(--arcade-bone-soft);
   --mantine-color-dark-2: var(--arcade-muted);
@@ -232,113 +227,47 @@ html[data-mantine-color-scheme] {
   --mantine-color-dark-7: var(--arcade-ground-raised);
   --mantine-color-dark-8: var(--arcade-ground);
   --mantine-color-dark-9: var(--arcade-well);
+  --mantine-primary-color-filled: var(--arcade-ember);
+  --mantine-primary-color-filled-hover: var(--arcade-ember-bright);
+  --mantine-primary-color-light: rgba(255, 100, 0, 0.16);
+  --mantine-primary-color-light-hover: rgba(255, 100, 0, 0.24);
+  --mantine-primary-color-light-color: var(--arcade-ember-bright);
+}
 
-  /* States */
-  --color-green-500: var(--arcade-green);
-  --file-active-badge-fg: var(--arcade-green);
 
-  /* Buttons and selection */
-  --btn-open-file: var(--arcade-ember);
-  --header-selected-bg: var(--arcade-ember-300);
-  --header-selected-fg: var(--arcade-bone);
-  --header-hover-bg: var(--arcade-ember-200);
-  --card-selected-border: var(--arcade-ember);
-  --checkbox-border: var(--arcade-line-strong);
-  --checkbox-checked-bg: var(--arcade-ember);
-  --checkbox-tick: var(--arcade-ground);
+/* ---------------------------------------------------------------------- */
+/* Mapping B: the legacy vocabulary that survives in v3 (being phased out  */
+/* upstream) still reads the arcade values, so phasing-out components      */
+/* follow. The Tailwind gray triplets and semantic slots go warm too.      */
+/* ---------------------------------------------------------------------- */
 
-  /* Landing page: the big hero gradient goes dark glass with an ember lit
-     edge, never a big bright fill. */
-  --landing-paper-bg: var(--arcade-glass-bg-strong);
-  --landing-inner-paper-bg: var(--arcade-ground-raised);
-  --landing-inner-paper-border: var(--arcade-line);
-  --landing-button-bg: var(--arcade-ground-overlay);
-  --landing-button-color: var(--arcade-ember);
-  --landing-button-border: var(--arcade-line);
-  --landing-button-hover-bg: var(--arcade-ground-raised);
-  --landing-hero-gradient: linear-gradient(135deg, var(--arcade-ground-overlay) 0%, var(--arcade-ground-raised) 60%, var(--arcade-ember-100) 100%);
-  --landing-stack-glow-bg: radial-gradient(circle, var(--arcade-ember-glow) 0%, transparent 70%);
-  --landing-drop-paper-bg: var(--arcade-ember-050);
-  --landing-drop-inner-paper-bg: var(--arcade-ember-100);
-  --landing-drop-inner-paper-border: var(--arcade-ember);
+html[data-mantine-color-scheme] {
+  --gray-50: 6 4 3;
+  --gray-100: 10 9 7;
+  --gray-200: 23 19 13;
+  --gray-300: 30 25 17;
+  --gray-400: 51 44 34;
+  --gray-500: 74 65 51;
+  --gray-600: 122 112 96;
+  --gray-700: 168 162 150;
+  --gray-800: 207 201 188;
+  --gray-900: 237 233 224;
+  --surface: 30 25 17;
+  --background: 10 9 7;
+  --border: 51 44 34;
 
-  /* Tool picker chrome */
-  --tool-header-bg: var(--arcade-ground-raised);
-  --tool-header-border: var(--arcade-line);
-  --tool-header-text: var(--arcade-ember);
-  --tool-header-badge-bg: var(--arcade-ember-100);
-  --tool-header-badge-text: var(--arcade-ember-bright);
-  --tool-subcategory-text-color: var(--arcade-muted);
-  --tool-subcategory-rule-color: var(--arcade-line);
-  --tool-panel-search-bg: var(--arcade-well);
-  --tool-panel-search-border-bottom: var(--arcade-line);
+  --text-brand: var(--arcade-bone);
+  --text-brand-accent: var(--arcade-ember);
 
-  /* File cards, inputs, modals */
-  --file-card-bg: var(--arcade-ground-raised);
-  --file-active-bg: var(--arcade-ember-050);
-  --accordion-item-bg: var(--arcade-ground-overlay);
-  --input-bg: var(--arcade-well);
-  --modal-nav-bg: var(--arcade-ground-raised);
-  --modal-nav-section-title: var(--arcade-muted);
-  --modal-nav-item: var(--arcade-bone-soft);
-  --modal-nav-item-active: var(--arcade-ember);
-  --modal-nav-item-active-bg: var(--arcade-ember-050);
-  --modal-content-bg: var(--arcade-ground-overlay);
-  --modal-header-border: var(--arcade-line);
-  --information-text-bg: var(--arcade-ground-raised);
-  --information-text-color: var(--arcade-bone-soft);
-  --bulk-panel-bg: var(--arcade-ground-raised);
-  --bulk-card-bg: var(--arcade-ground-raised);
-  --bulk-card-border: var(--arcade-line);
-  --bulk-card-hover-border: var(--arcade-line-strong);
-  --unsupported-bar-bg: var(--arcade-ground-raised);
-  --unsupported-bar-border: var(--arcade-line);
-
-  /* Tooltips and icons */
+  /* Tooltips */
   --tooltip-title-bg: var(--arcade-ground-overlay);
   --tooltip-title-color: var(--arcade-bone);
   --tooltip-header-bg: var(--arcade-ground-raised);
   --tooltip-header-color: var(--arcade-bone);
   --tooltip-border: var(--arcade-line);
-  --icon-user-bg: var(--arcade-ember-200);
-  --icon-user-color: var(--arcade-bone);
-  --icon-notifications-bg: var(--arcade-ground-overlay);
-  --icon-notifications-color: var(--arcade-muted);
-  --icon-tools-bg: var(--arcade-ground-overlay);
-  --icon-tools-color: var(--arcade-bone);
-  --icon-read-bg: var(--arcade-ground-overlay);
-  --icon-read-color: var(--arcade-bone);
-  --icon-sign-bg: var(--arcade-ground-overlay);
-  --icon-sign-color: var(--arcade-bone);
-  --icon-automate-bg: var(--arcade-ground-overlay);
-  --icon-automate-color: var(--arcade-bone);
-  --icon-files-bg: var(--arcade-ground-overlay);
-  --icon-files-color: var(--arcade-bone);
-  --icon-activity-bg: var(--arcade-ground-overlay);
-  --icon-activity-color: var(--arcade-bone);
-  --icon-config-bg: var(--arcade-ground-overlay);
-  --icon-config-color: var(--arcade-bone);
-  --icon-inactive-bg: var(--arcade-ground-overlay);
-  --icon-inactive-color: var(--arcade-muted);
 
-  /* Onboarding modal */
-  --onboarding-title: var(--arcade-bone);
-  --onboarding-body: var(--arcade-bone-soft);
-  --onboarding-primary-button-bg: var(--arcade-ember);
-  --onboarding-primary-button-text: var(--arcade-ground);
-  --onboarding-secondary-button-bg: transparent;
-  --onboarding-secondary-button-text: var(--arcade-bone-soft);
-  --onboarding-secondary-button-border: var(--arcade-line);
-  --onboarding-step-active: var(--arcade-ember);
-  --onboarding-step-inactive: var(--arcade-line-strong);
-
-  /* Mobile view toggle and generic primary slots (undefined upstream,
-     they fall back to blue when we do not set them) */
-  --primary-color: var(--arcade-ember);
-  --primary-surface: rgba(255, 100, 0, 0.16);
-
-  /* The component library's named blue accents (the user avatar chip,
-     tool header chips) become ember. The arcade has one accent. */
+  /* The component library's named blue accents that v3 still resolves in
+     places become ember. The arcade has one accent. */
   --mantine-color-blue-filled: var(--arcade-ember);
   --mantine-color-blue-filled-hover: var(--arcade-ember-bright);
   --mantine-color-blue-text: var(--arcade-ember-bright);
@@ -349,18 +278,11 @@ html[data-mantine-color-scheme] {
   --mantine-color-blue-6: var(--arcade-ember);
   --mantine-color-blue-7: var(--arcade-ember-600);
   --mantine-color-blue-8: var(--arcade-ember-dim);
-
-  /* PDF viewer selection glow, ember instead of blue */
-  --pdf-selection-bg: rgba(255, 100, 0, 0.25);
-  --pdf-selection-ring: rgba(255, 100, 0, 0.28);
-  --link-hover-bg: rgba(255, 100, 0, 0.14);
-  --link-hover-border: var(--arcade-glass-border-ember);
-  --link-focus-ring: rgba(255, 100, 0, 0.30);
 }
 
 
 /* ---------------------------------------------------------------------- */
-/* Surfaces: dark glass on the panels and bars.                            */
+/* Surfaces: dark glass on the panels, rails and overlays.                 */
 /* ---------------------------------------------------------------------- */
 
 body {
@@ -368,10 +290,8 @@ body {
   color: var(--arcade-bone);
 }
 
-.mantine-Paper-root,
-.mantine-Card-root,
 .tool-panel,
-.workbench-bar,
+.sui-nav-surface,
 .mantine-Modal-content,
 .mantine-Popover-dropdown,
 .mantine-Menu-dropdown {
@@ -381,7 +301,6 @@ body {
   border-color: var(--arcade-glass-border);
 }
 
-.mantine-Card-root,
 .mantine-Modal-content {
   box-shadow: var(--arcade-glass-shadow), var(--arcade-glass-highlight);
 }
@@ -391,15 +310,14 @@ body {
 /* The digital edge: panels and tiles are blocks, corners cut square.      */
 /* ---------------------------------------------------------------------- */
 
-.mantine-Card-root,
 .mantine-Modal-content,
 .landing-dropzone {
   border-radius: var(--arcade-radius-none);
   clip-path: var(--arcade-clip-panel);
 }
 
-/* Tiles in the tool picker: glass blocks with a pixel-cut corner, an
-   ember rim when hovered, and a snap-fast transition. */
+/* Tiles in the tool picker: glass blocks with a pixel-cut corner and a
+   snap-fast transition. */
 .tool-button {
   background-color: transparent;
   border-radius: var(--arcade-radius-none);
@@ -411,7 +329,7 @@ body {
   background-color: var(--arcade-ground-overlay);
 }
 
-/* The drop field for PDFs is the biggest block on the landing page: cut
+/* The drop field for PDFs is the biggest block on the landing canvas: cut
    corners and a stepped ember rim when a file is over it. */
 .landing-dropzone {
   border: 1px solid var(--arcade-line);
@@ -423,9 +341,9 @@ body {
   border-color: var(--arcade-ember);
 }
 
-/* Section dividers and rules snap to the block line color. */
-.landing-bar,
-.mantine-Divider-root {
+/* Dividers and rules snap to the block line color. */
+.mantine-Divider-root,
+.quick-nav-rail-divider {
   border-color: var(--arcade-line);
 }
 
@@ -450,10 +368,12 @@ body {
 
 /* ---------------------------------------------------------------------- */
 /* Buttons stay round. Standing house law, and it wins over the digital    */
-/* edge for buttons only. One ember fill, dark text on it (6.7:1, the      */
-/* measured pair), bone text on glass for the rest.                        */
+/* edge for buttons only. v3's solid button tokens are mapped above; the   */
+/* rules below keep every button pill rounded and the filled Mantine       */
+/* variant on the ember fill with dark text.                               */
 /* ---------------------------------------------------------------------- */
 
+.sui-btn,
 .mantine-Button-root {
   border-radius: var(--arcade-radius-button);
   transition: background-color var(--arcade-motion-snap) var(--arcade-motion-ease),
@@ -473,44 +393,15 @@ body {
   background-color: var(--arcade-ember-dim);
 }
 
-/* The landing action buttons carry !important upstream, so the arcade
-   treatment must answer in kind. Primary is the ember button with dark
-   text; both stay pill rounded, one size per group. */
-.mantine-Button-root.landing-btn-primary {
-  background: var(--arcade-ember) !important;
-  color: var(--arcade-ground) !important;
-  border: none !important;
-  border-radius: var(--arcade-radius-button) !important;
-}
-
-.mantine-Button-root.landing-btn-primary:hover {
-  background: var(--arcade-ember-bright) !important;
-}
-
-.mantine-Button-root.landing-btn-primary:active {
-  background: var(--arcade-ember-dim) !important;
-}
-
-.mantine-Button-root.landing-btn-secondary {
-  border-radius: var(--arcade-radius-button) !important;
-  border-color: var(--arcade-line-strong) !important;
-  background-color: var(--arcade-ground-overlay) !important;
-  color: var(--arcade-ember) !important;
-}
-
-.mantine-Button-root.landing-btn-secondary:hover {
-  background-color: var(--arcade-ground-raised) !important;
-  border-color: var(--arcade-ember-dim) !important;
-}
-
-.landing-btn-icon {
-  border-radius: var(--arcade-radius-button) !important;
-  color: var(--arcade-ember) !important;
-}
-
 /* Icon buttons read as round glass studs. */
-.mantine-ActionIcon-root {
+.mantine-ActionIcon-root,
+.sui-ai {
   border-radius: var(--arcade-radius-button);
+}
+
+/* The account avatar disc joins the one accent. */
+.sui-avatar--blue {
+  background: var(--arcade-ember-300);
 }
 
 
@@ -532,7 +423,7 @@ body {
   outline: none;
 }
 
-/* Selections and scrollbars follow the ember. */
+/* Selections follow the ember. */
 ::selection {
   background: var(--arcade-ember-dim);
   color: var(--arcade-bone);
