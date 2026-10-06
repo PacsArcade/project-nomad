@@ -536,6 +536,44 @@ export default class ServiceSeeder extends BaseSeeder {
       depends_on: null,
       metadata: JSON.stringify({ minMemoryMB: 2048, minDiskMB: 20480 }),
     },
+    {
+      service_name: SERVICE_NAMES.CONVERTX,
+      friendly_name: 'ConvertX',
+      powered_by: 'ConvertX',
+      display_order: 28,
+      description:
+        'Self-hosted file converter - turn documents, images, audio, and video between 1000+ formats (PNG to WebP, DOCX to PDF, and more)',
+      icon: 'IconTransform',
+      container_image: 'ghcr.io/c4illin/convertx:v0.19.0',
+      source_repo: 'https://github.com/C4illin/ConvertX',
+      container_command: null,
+      container_config: JSON.stringify({
+        HostConfig: {
+          RestartPolicy: { Name: 'unless-stopped' },
+          PortBindings: { '3000/tcp': [{ HostPort: '8510' }] },
+          Binds: [`${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/convertx:/app/data`],
+        },
+        ExposedPorts: { '3000/tcp': {} },
+        // NOMAD serves plain HTTP on the LAN, and ConvertX refuses logins over non-HTTPS
+        // unless HTTP_ALLOWED is set; without it the app is unusable on the box.
+        // ACCOUNT_REGISTRATION stays false on purpose: the FIRST account can always be
+        // created on first visit (that's how you get in), but no further accounts can
+        // self-register afterwards. An account is required to use the converter
+        // (ALLOW_UNAUTHENTICATED left at its default false), which keeps a LAN box from
+        // becoming an open conversion service. FFmpeg, ImageMagick, and libvips are
+        // bundled in the image, so no converter env is needed. Upload size has no env
+        // knob in v0.19.0 (the app sets maxRequestBodySize to Number.MAX_SAFE_INTEGER);
+        // the guardrails are disk space and the default 24h auto-delete of uploaded files.
+        Env: ['HTTP_ALLOWED=true', 'ACCOUNT_REGISTRATION=false'],
+      }),
+      ui_location: '8510',
+      installed: false,
+      installation_status: 'idle',
+      is_dependency_service: false,
+      is_custom: false,
+      category: 'utility',
+      depends_on: null,
+    },
   ]
 
   async run() {

@@ -223,6 +223,20 @@ Your own media server. Point Jellyfin at a folder of movies, TV shows, music, an
 
 > **A note on playback performance:** Jellyfin plays most files effortlessly, but if a video's format isn't supported by your device, Jellyfin has to convert it on the fly ("transcoding"), which is heavy work for the processor. NOMAD doesn't set up graphics-card acceleration for this by default, so very large or high-resolution videos may stutter on a modest NOMAD. Playing files in a widely-supported format (like MP4/H.264) avoids transcoding and plays smoothest.
 
+## ConvertX {% #convertx %}
+
+A file converter that runs entirely on your NOMAD. Drop in a file, pick the format you want, and ConvertX converts it locally using the same trusted tools a professional would reach for (FFmpeg for video and audio, ImageMagick and libvips for images, LibreOffice and Pandoc for documents, Calibre for e-books). It handles over a thousand format pairs: PNG or JPEG to WebP for much smaller image files, DOCX to PDF, MOV to MP4, WAV to MP3, EPUB to MOBI, and many more. Several files can be converted in one batch.
+
+**Official site:** [github.com/C4illin/ConvertX](https://github.com/C4illin/ConvertX) · **Source:** same repository
+
+**First time you open it, you create the one account.** ConvertX requires a login, and on NOMAD new sign-ups are closed after the first account, so the very first visit shows a create-account page: make your account there with a real password and keep track of it. From then on the app opens to a sign-in page and nobody else can register. If you ever want a second account, flip `ACCOUNT_REGISTRATION` to `true` via Manage > Edit on the app in the Command Center, let the person register, then flip it back to `false`.
+
+**Using it:** Sign in, drag one or more files onto the page (or click to browse), choose the target format from the dropdown, and convert. When it finishes you get a download link for each converted file. The **History** page lists your past conversions while their files are still on the box.
+
+**Your data:** Uploads and converted files live in `storage/convertx`. ConvertX automatically deletes files older than 24 hours, so it is a workshop, not a filing cabinet: download anything you want to keep and store it properly, for example in your media folder via File Browser. Your account and settings also live in `storage/convertx`.
+
+**Works offline:** Fully. Every converter is bundled inside the app on your NOMAD and the whole job happens on the box's own processor. Nothing is uploaded to any outside service, which is the reason to run a converter on NOMAD instead of using an online one. Two things follow: big video jobs can take a while on a modest box, and the size of file you can convert is limited by free disk space, since there is no fixed upload limit in this version.
+
 ## Meshtastic Web {% #meshtastic-web %}
 
 A browser-based control panel for [Meshtastic](https://meshtastic.org) devices. Meshtastic is off-grid, long-range radio messaging: small, inexpensive LoRa radios that form their own mesh network and send text messages and GPS locations for miles with no cell service, no internet, and no fees. This app is how you configure those radios and read and send messages from a full-size screen.
