@@ -223,6 +223,11 @@ export default class ServiceSeeder extends BaseSeeder {
           Binds: [
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/stirling-pdf/configs:/configs`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/stirling-pdf/logs:/logs`,
+            // Arcade theme (lane T-572): Stirling's documented UI Customisation
+            // path. customFiles/static/arcade.css is served at /arcade.css and a
+            // customFiles/static/index.html copy of the app entry page links it.
+            // Theme source: theme/stirling-pdf/arcade.css in this repo.
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/stirling-pdf/customFiles:/customFiles`,
           ],
         },
         ExposedPorts: { '8080/tcp': {} },
