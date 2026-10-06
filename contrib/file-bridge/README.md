@@ -1,70 +1,78 @@
-# contrib/file-bridge: File Browser hands files to the working apps
+# contrib/file-bridge: hand files to the working apps, no click required
 
-The WanderPac bridge pattern in one folder: File Browser is where the files
-live, so it is where the hand-off starts. These scripts run inside the File
-Browser container from its shell panel (the `< >` button in the header) and
-push the file you name to the app that works on it.
+The WanderPac bridge pattern in one folder. Two carriers run these scripts:
 
-## What File Browser v2.63.23 actually supports
+- **copyparty** (the copyparty catalog entry): an `xau` hook fires
+  `on-upload.sh` every time a file lands, and the file itself is the whole
+  user story. Drop a PDF in the folder, the compressed copy appears beside
+  it. This is the no-click bridge proven in lane T-576.
+- **File Browser** (the current file app): the same two hand-off scripts
+  run from its shell panel (the `< >` button in the header), typed by hand.
 
-Verified by reading upstream source at the v2.63.23 tag (the pinned image):
+## Scripts
 
-- The interactive shell (header `< >` button, websocket `/api/command`) runs
-  a typed command with the working directory set to the folder you are
-  browsing. It does NOT receive the selected file as an argument or env var;
-  you type the file name yourself. There is no right-click "run command on
-  this file" in v2.
+- `on-upload.sh` (copyparty xau hook entry): dispatch only. PDFs go to
+  Stirling, office docs to ConvertX as PDF, images to ConvertX as WebP,
+  audio to ConvertX as MP3; everything else is left alone. Hook outputs
+  and marker files are never re-processed, so there is no loop.
+- `send-to-stirling.sh FILE [LEVEL]` posts FILE to Stirling's
+  `POST /api/v1/misc/compress-pdf` (verified live against Stirling 3.1.0)
+  and writes `NAME-stirling.pdf` beside the original. The file rides on
+  stdin under the fixed name `upload.pdf`, so commas, semicolons, and
+  quotes in the real name cannot break curl's multipart parser. Stirling
+  must be reachable from the container. Set `STIRLING_URL` to its
+  address; the copyparty catalog entry wires it to the Stirling service
+  name on the NOMAD network.
+- `send-to-convertx.sh FILE EXT,CONVERTER` drives ConvertX's
+  cookie-session web flow (ConvertX v0.19.0 has no public API). It needs
+  curl. Set `CONVERTX_URL`; the copyparty catalog entry wires it to the
+  ConvertX service name. ConvertX must run with
+  `ALLOW_UNAUTHENTICATED=true` and `HTTP_ALLOWED=true`; the seeded
+  ConvertX entry keeps accounts on, so this hand-off needs that one-time
+  flip (Manage > Edit on ConvertX) before it can work.
+- Failure is visible: when a hand-off fails, the scripts write
+  `NAME.bridge-failed` beside the upload, so the failure shows in the
+  file listing. The next successful hand-off clears it.
+- ConvertX archive safety: the answer tar is listed before extraction
+  into a mktemp dir, members with `..` or absolute paths are rejected,
+  and only regular top-level files move into the folder.
+
+## copyparty setup
+
+Nothing to do: the copyparty catalog entry's install step copies these
+scripts into `storage/copyparty/hooks` and mounts them read-only at
+`/hooks`, and the generated volume config points the `xau` flag at
+`/hooks/on-upload.sh`.
+
+## File Browser setup (one time, on the box)
+
+What File Browser v2.63.23 actually supports (verified against upstream
+source at the pinned tag):
+
+- The interactive shell (header `< >` button, websocket `/api/command`)
+  runs a typed command in the folder you are browsing. It does NOT
+  receive the selected file; you type the file name yourself.
 - The command must be allowlisted per user:
-  Settings > User Management > edit the user > Commands. The allowlist entry
-  is the command's first token, so allowlist the full script path, for
-  example `/bridge/send-to-stirling.sh`.
+  Settings > User Management > edit the user > Commands. Allowlist the
+  full script path, for example `/bridge/send-to-stirling.sh`.
 - The user also needs the Execute permission (the seeded admin has it).
-- Command execution is DISABLED by default since v2.33.8 (upstream did this
-  for security, see their issue 5199). The catalog entry sets
-  `FB_DISABLE_EXEC=false` to turn it on. The exposure is bounded: only
-  allowlisted command paths run, the allowlist is per user, and the box is a
-  single-user offline appliance. Do not allowlist a bare shell (`sh`) unless
-  you accept that it is full remote command execution for that user.
-- The hook runner (before/after copy, rename, upload, delete, save) is a
-  separate feature with its own `$FILE`, `$SCOPE`, `$TRIGGER`, `$USERNAME`,
-  `$DESTINATION` env vars. Those env vars are NOT available to interactive
-  shell commands. The bridge scripts do not use hooks: the hand-off should
-  happen when the user asks, not on every upload.
+- Command execution is DISABLED by default since v2.33.8 (upstream's
+  issue 5199). The catalog entry sets `FB_DISABLE_EXEC=false`. Only
+  allowlisted command paths run; do not allowlist a bare shell.
 - The pinned image ships busybox only: `sh` and `wget`, no `curl`.
-  send-to-stirling.sh therefore builds its multipart body by hand and uses
-  curl only if one happens to exist.
+  send-to-stirling.sh falls back to a hand-built multipart body;
+  send-to-convertx.sh needs curl and cannot run in that container.
 
-## Setup (one time, on the box)
+Steps:
 
-1. The catalog entry already mounts `storage/filebrowser/bridge` at
-   `/bridge` read-only and sets `FB_DISABLE_EXEC=false`. Put the scripts in
+1. The catalog entry mounts `storage/filebrowser/bridge` at `/bridge`
+   read-only. Put `send-to-stirling.sh` and `send-to-convertx.sh` in
    `storage/filebrowser/bridge/` and `chmod +x` them.
 2. In File Browser, log in as admin, go to
    Settings > User Management > edit admin > Commands and add:
    `/bridge/send-to-stirling.sh`
-   Save. New-user defaults live under Settings > Global Settings > Commands.
-3. Browse to a folder with a PDF, open the shell panel (`< >` in the
-   header), and run:
+3. Browse to a folder with a PDF, open the shell panel, and run:
    `/bridge/send-to-stirling.sh "my scan.pdf"`
-   The script posts the file to Stirling's compress-pdf API and saves the
-   result next to the original as `my scan-stirling.pdf`.
-
-## Scripts
-
-- `send-to-stirling.sh FILE [LEVEL]` posts FILE to Stirling's
-  `POST /api/v1/misc/compress-pdf` (verified live against Stirling 3.1.0)
-  and writes `NAME-stirling.pdf` beside the original. Stirling must be
-  reachable from the File Browser container. Set `STIRLING_URL` to its
-  address, for example `http://stirling-host:8400` (the catalog publishes
-  Stirling's port on the LAN); the script exits with an error when it is
-  not set.
-- `send-to-convertx.sh FILE EXT,CONVERTER` is EXPERIMENTAL and unproven:
-  ConvertX v0.19.0 has no public API, only its cookie-session web flow, and
-  the script needs curl, which the File Browser image does not ship. Set
-  `CONVERTX_URL` to ConvertX's address, for example
-  `http://convertx-host:8510` (the catalog port for ConvertX); the script
-  exits with an error when it is not set. Read the header comment before
-  relying on it.
 
 ## The Jellyfin half
 
@@ -72,4 +80,4 @@ Not a script: a catalog bind. Jellyfin's entry now also mounts
 `storage/filebrowser/files` at `/media/boxdocs:ro`, so everything in File
 Browser's home tree is visible to Jellyfin read-only and no file ever has
 to move folders to be indexed. See `docs/BRIDGE.md` in the wanderpac repo
-for the full three-move pattern.
+for the full pattern.

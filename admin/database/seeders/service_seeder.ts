@@ -261,9 +261,9 @@ export default class ServiceSeeder extends BaseSeeder {
       // Pinned to the verified latest v2.x release, v2.63.23 (2026-07-27; upstream archived
       // the project 2026-09-01, so this is the final line of releases). Manifest-list digest
       // sha256:a469ea076d4a1b4b1d86a41d130f2f536cd9da996a2b1fb39c0d7635f9d89b9a. Kept as a
-      // tag pin, not a tag@digest pin: the update checker's parseImageReference splits on the
-      // last colon and would read the digest as the tag, and _checkImageExists matches
-      // RepoTags, which a digest-pulled image does not carry.
+      // tag pin rather than tag@digest: v2.63.23 is the last release there will ever be, so
+      // the pin never moves and the tag alone already names exactly one image. (Digest pins
+      // parse correctly since the T-585 parseImageReference fix; copyparty uses one.)
       container_image: 'filebrowser/filebrowser:v2.63.23',
       source_repo: 'https://github.com/filebrowser/filebrowser',
       // Browsable root is storage/filebrowser/files (persistent, so files created at the top level

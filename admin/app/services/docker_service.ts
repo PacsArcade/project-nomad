@@ -2425,12 +2425,27 @@ export class DockerService {
 
   /**
    * Check if a Docker image exists locally.
-   * @param imageName - The name and tag of the image (e.g., "nginx:latest")
+   * @param imageName - The name and tag of the image (e.g., "nginx:latest"),
+   *   optionally digest-pinned ("copyparty/iv:1.20.25@sha256:...")
    * @returns - True if the image exists locally, false otherwise
    */
   private async _checkImageExists(imageName: string): Promise<boolean> {
     try {
       const images = await this.docker.listImages()
+
+      // A digest-pinned reference ("name:tag@sha256:...") never appears in
+      // RepoTags verbatim: docker records the pull as RepoTags "name:tag"
+      // and RepoDigests "name@sha256:...". Match either form.
+      const atSign = imageName.indexOf('@')
+      if (atSign > -1) {
+        const tagRef = imageName.substring(0, atSign) // name:tag
+        const digestRef = `${tagRef.substring(0, tagRef.lastIndexOf(':'))}${imageName.substring(atSign)}` // name@sha256:...
+        return images.some(
+          (image) =>
+            (image.RepoTags && image.RepoTags.includes(tagRef)) ||
+            (image.RepoDigests && image.RepoDigests.includes(digestRef))
+        )
+      }
 
       // Check if any image has a RepoTag that matches the requested image
       return images.some((image) => image.RepoTags && image.RepoTags.includes(imageName))

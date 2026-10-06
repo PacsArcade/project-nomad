@@ -373,9 +373,10 @@ export class AppAutoUpdateService {
     }
   }
 
-  /** Strip the tag from an image reference, leaving "registry/namespace/repo". */
+  /** Strip the tag (and any digest pin) from an image reference, leaving "registry/namespace/repo". */
   private imageBase(image: string): string {
-    return image.includes(':') ? image.substring(0, image.lastIndexOf(':')) : image
+    const noDigest = image.includes('@') ? image.substring(0, image.indexOf('@')) : image
+    return noDigest.includes(':') ? noDigest.substring(0, noDigest.lastIndexOf(':')) : noDigest
   }
 
   /** Map the Docker daemon's architecture string to OCI naming (amd64/arm64/...). */
