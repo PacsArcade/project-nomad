@@ -253,7 +253,13 @@ export default class ServiceSeeder extends BaseSeeder {
       display_order: 21,
       description: 'Web-based file manager — browse, upload, download, and organize files on your device',
       icon: 'IconFolderOpen',
-      container_image: 'filebrowser/filebrowser:v2',
+      // Pinned to the verified latest v2.x release, v2.63.23 (2026-07-27; upstream archived
+      // the project 2026-09-01, so this is the final line of releases). Manifest-list digest
+      // sha256:a469ea076d4a1b4b1d86a41d130f2f536cd9da996a2b1fb39c0d7635f9d89b9a. Kept as a
+      // tag pin, not a tag@digest pin: the update checker's parseImageReference splits on the
+      // last colon and would read the digest as the tag, and _checkImageExists matches
+      // RepoTags, which a digest-pulled image does not carry.
+      container_image: 'filebrowser/filebrowser:v2.63.23',
       source_repo: 'https://github.com/filebrowser/filebrowser',
       // Browsable root is storage/filebrowser/files (persistent, so files created at the top level
       // survive updates), with the user-facing content folders mounted in beneath it. We deliberately
@@ -285,7 +291,7 @@ export default class ServiceSeeder extends BaseSeeder {
         // Without an initial password FileBrowser generates a random one and prints it only to
         // the container logs, which a non-technical user can't reach. Seed a known admin/nomad
         // login on first run instead (only applies when the DB doesn't exist yet); the docs tell
-        // users to change it. FB_NOAUTH / --noauth don't work on this image (v2.63.x), so a login
+        // users to change it. FB_NOAUTH / --noauth don't work on this image (v2.63.23), so a login
         // stays, which is the safer default anyway for a read/write/delete file manager.
         // NOTE: FB_PASSWORD must be a bcrypt hash, not plaintext. The value below is the hash of
         // "nomad" (generated via `filebrowser hash nomad`). Login is admin / nomad.
