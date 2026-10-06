@@ -531,10 +531,19 @@ export default class ServiceSeeder extends BaseSeeder {
         HostConfig: {
           RestartPolicy: { Name: 'unless-stopped' },
           PortBindings: { '8096/tcp': [{ HostPort: '8490' }] },
+          // The boxdocs fix: Jellyfin used to see only storage/media, so media that lived in
+          // the File Browser folders had to be MOVED into media before Jellyfin could index it.
+          // Instead bind File Browser's home root (storage/filebrowser/files, which is /srv in
+          // File Browser) into Jellyfin read-only at /media/boxdocs. Everything the user keeps
+          // in File Browser's home tree is now visible to Jellyfin without moving a single file,
+          // and :ro means Jellyfin can index but never modify it. Verified 2026-10-06 on the
+          // live box: there is no separate boxdocs directory, so the whole files root is bound;
+          // a future boxdocs folder created in File Browser rides along automatically.
           Binds: [
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/jellyfin/config:/config`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/jellyfin/cache:/cache`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/media:/media`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/filebrowser/files:/media/boxdocs:ro`,
           ],
         },
         ExposedPorts: { '8096/tcp': {} },
