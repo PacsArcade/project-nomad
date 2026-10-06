@@ -219,7 +219,7 @@ export default class ServiceSeeder extends BaseSeeder {
       display_order: 20,
       description: 'Locally-hosted PDF manipulation tool — merge, split, compress, convert, and more',
       icon: 'IconFileDescription',
-      container_image: 'ghcr.io/stirling-tools/s-pdf:2.13.1',
+      container_image: 'ghcr.io/stirling-tools/s-pdf:3.1.0',
       source_repo: 'https://github.com/Stirling-Tools/Stirling-PDF',
       container_command: null,
       container_config: JSON.stringify({
@@ -229,6 +229,11 @@ export default class ServiceSeeder extends BaseSeeder {
           Binds: [
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/stirling-pdf/configs:/configs`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/stirling-pdf/logs:/logs`,
+            // Arcade theme (lane T-572): Stirling's documented UI Customisation
+            // path. customFiles/static/arcade.css is served at /arcade.css and a
+            // customFiles/static/index.html copy of the app entry page links it.
+            // Theme source: theme/stirling-pdf/arcade.css in this repo.
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/stirling-pdf/customFiles:/customFiles`,
           ],
         },
         ExposedPorts: { '8080/tcp': {} },
