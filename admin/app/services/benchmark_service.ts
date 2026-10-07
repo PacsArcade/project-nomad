@@ -39,6 +39,7 @@ import { SERVICE_NAMES } from '../../constants/service_names.js'
 import { BROADCAST_CHANNELS } from '../../constants/broadcast.js'
 import { BenchmarkTelemetrySampler } from './benchmark_telemetry.js'
 import Dockerode from 'dockerode'
+import { isSelfHostedOllamaUrl } from '../utils/self_hosted_url.js'
 
 // HMAC secret for signing submissions to the benchmark repository
 // This provides basic protection against casual API abuse.
@@ -152,40 +153,6 @@ const MEMORY_BENCHMARK_THREADS = 4
 // AI is measured as the median of N runs (W7) to damp per-run inference jitter.
 const AI_BENCHMARK_RUNS = 3
 
-/**
- * Does `ai.remoteOllamaUrl` point back at the machine NOMAD itself runs on?
- *
- * The submission gate exists because a remote AI host makes the AI channel
- * describe someone else's hardware. That reasoning does not apply when the
- * "remote" host is this same box — the commonest case being Ollama installed
- * natively on the host while NOMAD runs in Docker, which is how the AI
- * assistant is expected to work on macOS.
- *
- * `host.docker.internal` is the meaningful entry: from inside the admin
- * container it resolves to the host, and it is the form the setup flow accepts
- * for a native host install. Loopback is included for completeness (it only
- * reaches the container itself, so it is unlikely to have been saved, but it
- * unambiguously is not another machine).
- *
- * A LAN address is DELIBERATELY NOT exempt. `192.168.1.50` is indistinguishable
- * from another box on the same network, and wrongly exempting one would let a
- * genuinely remote GPU's throughput be attributed to this hardware. False
- * blocks are recoverable by clearing the setting; a false pass silently
- * corrupts the leaderboard.
- */
-function isSelfHostedOllamaUrl(rawUrl: string): boolean {
-  let host: string
-  try {
-    host = new URL(rawUrl.trim()).hostname.toLowerCase()
-  } catch {
-    return false
-  }
-  if (host === 'host.docker.internal' || host === 'gateway.docker.internal') return true
-  if (host === 'localhost' || host === '::1' || host === '[::1]') return true
-  // 127.0.0.0/8 — the whole loopback range, not just 127.0.0.1.
-  if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true
-  return false
-}
 
 // Moved to app/utils/gpu_model.ts so the Settings > System display path can
 // share the same definition — see the note there (#1196).
