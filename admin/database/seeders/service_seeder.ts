@@ -219,7 +219,7 @@ export default class ServiceSeeder extends BaseSeeder {
       display_order: 20,
       description: 'Locally-hosted PDF manipulation tool — merge, split, compress, convert, and more',
       icon: 'IconFileDescription',
-      container_image: 'ghcr.io/stirling-tools/s-pdf:2.13.1',
+      container_image: 'ghcr.io/stirling-tools/s-pdf:3.1.0',
       source_repo: 'https://github.com/Stirling-Tools/Stirling-PDF',
       container_command: null,
       container_config: JSON.stringify({
@@ -229,6 +229,11 @@ export default class ServiceSeeder extends BaseSeeder {
           Binds: [
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/stirling-pdf/configs:/configs`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/stirling-pdf/logs:/logs`,
+            // Arcade theme (lane T-572): Stirling's documented UI Customisation
+            // path. customFiles/static/arcade.css is served at /arcade.css and a
+            // customFiles/static/index.html copy of the app entry page links it.
+            // Theme source: theme/stirling-pdf/arcade.css in this repo.
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/stirling-pdf/customFiles:/customFiles`,
           ],
         },
         ExposedPorts: { '8080/tcp': {} },
@@ -253,7 +258,13 @@ export default class ServiceSeeder extends BaseSeeder {
       display_order: 21,
       description: 'Web-based file manager — browse, upload, download, and organize files on your device',
       icon: 'IconFolderOpen',
-      container_image: 'filebrowser/filebrowser:v2',
+      // Pinned to the verified latest v2.x release, v2.63.23 (2026-07-27; upstream archived
+      // the project 2026-09-01, so this is the final line of releases). Manifest-list digest
+      // sha256:a469ea076d4a1b4b1d86a41d130f2f536cd9da996a2b1fb39c0d7635f9d89b9a. Kept as a
+      // tag pin rather than tag@digest: v2.63.23 is the last release there will ever be, so
+      // the pin never moves and the tag alone already names exactly one image. (Digest pins
+      // parse correctly since the T-585 parseImageReference fix; copyparty uses one.)
+      container_image: 'filebrowser/filebrowser:v2.63.23',
       source_repo: 'https://github.com/filebrowser/filebrowser',
       // Browsable root is storage/filebrowser/files (persistent, so files created at the top level
       // survive updates), with the user-facing content folders mounted in beneath it. We deliberately
@@ -274,6 +285,9 @@ export default class ServiceSeeder extends BaseSeeder {
           Binds: [
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/filebrowser/files:/srv`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/filebrowser/db:/db`,
+            // The file bridge (contrib/file-bridge): hand-off scripts land here, mounted
+            // read-only at /bridge so the shell panel can run /bridge/send-to-stirling.sh.
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/filebrowser/bridge:/bridge:ro`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/books:/srv/books`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/maps:/srv/maps`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/media:/srv/media`,
@@ -285,13 +299,19 @@ export default class ServiceSeeder extends BaseSeeder {
         // Without an initial password FileBrowser generates a random one and prints it only to
         // the container logs, which a non-technical user can't reach. Seed a known admin/nomad
         // login on first run instead (only applies when the DB doesn't exist yet); the docs tell
-        // users to change it. FB_NOAUTH / --noauth don't work on this image (v2.63.x), so a login
+        // users to change it. FB_NOAUTH / --noauth don't work on this image (v2.63.23), so a login
         // stays, which is the safer default anyway for a read/write/delete file manager.
         // NOTE: FB_PASSWORD must be a bcrypt hash, not plaintext. The value below is the hash of
         // "nomad" (generated via `filebrowser hash nomad`). Login is admin / nomad.
+        // FB_DISABLE_EXEC=false turns the command runner back on (upstream disabled it by
+        // default from v2.33.8 for security, see filebrowser issue 5199). The exposure is
+        // bounded: only command paths allowlisted per user (Settings > User Management >
+        // Commands) run at all, and the bridge scripts live on a read-only mount. The one-time
+        // allowlist step is documented in contrib/file-bridge/README.md.
         Env: [
           'FB_USERNAME=admin',
           'FB_PASSWORD=$2a$10$Dvu3XTiLxvPTzvdOKu6y6.AmadN6Zt0ddLwK.8MQ.RCIQWunWBQXa',
+          'FB_DISABLE_EXEC=false',
         ],
         User: 'root'
       }),
@@ -525,10 +545,19 @@ export default class ServiceSeeder extends BaseSeeder {
         HostConfig: {
           RestartPolicy: { Name: 'unless-stopped' },
           PortBindings: { '8096/tcp': [{ HostPort: '8490' }] },
+          // The boxdocs fix: Jellyfin used to see only storage/media, so media that lived in
+          // the File Browser folders had to be MOVED into media before Jellyfin could index it.
+          // Instead bind File Browser's home root (storage/filebrowser/files, which is /srv in
+          // File Browser) into Jellyfin read-only at /media/boxdocs. Everything the user keeps
+          // in File Browser's home tree is now visible to Jellyfin without moving a single file,
+          // and :ro means Jellyfin can index but never modify it. Verified 2026-10-06 on the
+          // live box: there is no separate boxdocs directory, so the whole files root is bound;
+          // a future boxdocs folder created in File Browser rides along automatically.
           Binds: [
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/jellyfin/config:/config`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/jellyfin/cache:/cache`,
             `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/media:/media`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/filebrowser/files:/media/boxdocs:ro`,
           ],
         },
         ExposedPorts: { '8096/tcp': {} },
@@ -550,7 +579,7 @@ export default class ServiceSeeder extends BaseSeeder {
       description:
         'Read the Information Library in another language. Machine translation that works offline, on CPU',
       icon: 'IconWorld',
-      container_image: 'ghcr.io/crosstalk-solutions/project-nomad-translate:0.1.0',
+      container_image: 'ghcr.io/crosstalk-solutions/project-nomad-translate:0.1.1',
       source_repo: 'https://github.com/browsermt/bergamot-translator',
       container_command: null,
       container_config: JSON.stringify({
@@ -561,7 +590,7 @@ export default class ServiceSeeder extends BaseSeeder {
         },
         ExposedPorts: { '8391/tcp': {} },
         // TRANSLATE_LANGS is the language set fetched on first start, about
-        // 74 MB per language for the pair in both directions. Editable via
+        // 45-140 MB per language for the pair in both directions. Editable via
         // Manage > Edit; the container re-checks on restart and only fetches
         // what is missing.
         Env: [
@@ -584,8 +613,124 @@ export default class ServiceSeeder extends BaseSeeder {
       // has to be there first.
       depends_on: SERVICE_NAMES.KIWIX,
       // Peak RSS measured at 729 MB with three language pairs resident; models
-      // are about 74 MB per language on disk.
+      // are about 45-140 MB per language on disk.
       metadata: JSON.stringify({ minMemoryMB: 1536, minDiskMB: 1024 }),
+    },
+    {
+      service_name: SERVICE_NAMES.CONVERTX,
+      friendly_name: 'ConvertX',
+      powered_by: 'ConvertX',
+      display_order: 29,
+      description:
+        'Self-hosted file converter - turn documents, images, audio, and video between 1000+ formats (PNG to WebP, DOCX to PDF, and more)',
+      icon: 'IconTransform',
+      container_image: 'ghcr.io/c4illin/convertx:v0.19.0',
+      source_repo: 'https://github.com/C4illin/ConvertX',
+      container_command: null,
+      container_config: JSON.stringify({
+        HostConfig: {
+          RestartPolicy: { Name: 'unless-stopped' },
+          PortBindings: { '3000/tcp': [{ HostPort: '8510' }] },
+          Binds: [`${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/convertx:/app/data`],
+        },
+        ExposedPorts: { '3000/tcp': {} },
+        // NOMAD serves plain HTTP on the LAN, and ConvertX refuses logins over non-HTTPS
+        // unless HTTP_ALLOWED is set; without it the app is unusable on the box.
+        // ACCOUNT_REGISTRATION stays false on purpose: the FIRST account can always be
+        // created on first visit (that's how you get in), but no further accounts can
+        // self-register afterwards. An account is required to use the converter
+        // (ALLOW_UNAUTHENTICATED left at its default false), which keeps a LAN box from
+        // becoming an open conversion service. FFmpeg, ImageMagick, and libvips are
+        // bundled in the image, so no converter env is needed. Upload size has no env
+        // knob in v0.19.0 (the app sets maxRequestBodySize to Number.MAX_SAFE_INTEGER);
+        // the guardrails are disk space and the default 24h auto-delete of uploaded files.
+        Env: ['HTTP_ALLOWED=true', 'ACCOUNT_REGISTRATION=false'],
+      }),
+      ui_location: '8510',
+      installed: false,
+      installation_status: 'idle',
+      is_dependency_service: false,
+      is_custom: false,
+      category: 'utility',
+      depends_on: null,
+    },
+    {
+      // copyparty: the file-tool successor-in-waiting (lane T-585; File Browser's
+      // upstream archived 2026-09-01). Same content folders as File Browser, plus
+      // the two things File Browser cannot do: event hooks (the no-click bridge,
+      // xau fires /hooks/on-upload.sh on every upload) and a built-in media
+      // player/thumbnails. File Browser's tile STAYS; removing it is a later ruling.
+      service_name: SERVICE_NAMES.COPYPARTY,
+      friendly_name: 'Files (copyparty)',
+      powered_by: 'copyparty',
+      display_order: 31,
+      description:
+        'Fast file manager with media previews - browse, upload, and play files, and watch PDFs and documents get processed automatically when you drop them in',
+      icon: 'IconFolderShare',
+      // Official image, the iv variant (the full image WITH media previews and
+      // thumbnails: Pillow, FFmpeg, libvips - the Admiral's ruling A on Desk card
+      // 970216). Digest-pinned at v1.20.25 (2026-10-05), the newest release at pin
+      // time and the security release carrying the last open advisory fix; all 17
+      // published advisories are fixed at or before this version. Manifest-list
+      // digest verified against the Docker Hub registry API 2026-10-06. Update
+      // policy: the auto-update checker follows same-major tags from the tag part
+      // of this reference (parseImageReference handles digest pins since T-585);
+      // an applied update moves to the new tag and drops the digest pin, so a
+      // re-pin is a catalog change like this one.
+      container_image:
+        'copyparty/iv:1.20.25@sha256:eb81dfa99d38c0778e4e713a6bd697db7557755eff8e5e69ae26d6a225438b41',
+      source_repo: 'https://github.com/9001/copyparty',
+      // Everything is driven by the generated /cfg/copyparty.conf (accounts,
+      // volume, hooks, theme), written on install by
+      // _runPreinstallActions__Copyparty with a random per-box password.
+      container_command: null,
+      container_config: JSON.stringify({
+        HostConfig: {
+          RestartPolicy: { Name: 'unless-stopped' },
+          PortBindings: { '3923/tcp': [{ HostPort: '8520' }] },
+          Binds: [
+            // The served tree (the / volume). Same content folders as File
+            // Browser, and for the same reason: the sensitive/app-internal
+            // folders simply are not present, so they cannot be browsed.
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/copyparty/files:/w`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/books:/w/books`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/maps:/w/maps`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/media:/w/media`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/kb_uploads:/w/kb_uploads`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/zim:/w/zim`,
+            // G3/G5/G4 (lane T-585 security read): config, theme head file and
+            // hook scripts are all house-owned and mounted READ-ONLY, and none
+            // of them live inside the served tree (/w). A user-writable head
+            // file or hook would be a code-execution surface.
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/copyparty/config:/cfg:ro`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/copyparty/theme:/theme:ro`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/copyparty/hooks:/hooks:ro`,
+            // Thumbnail/index cache survives recreates.
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/copyparty/state:/state`,
+          ],
+        },
+        ExposedPorts: { '3923/tcp': {} },
+        // G1: HTTP/WebDAV only - no FTP/SFTP/TFTP/SMB flags anywhere in the
+        // config, and only the catalog port is published. G7: the bridge
+        // targets are fixed service names on the NOMAD network (DockerService
+        // attaches every managed container to it); nothing user-controlled is
+        // fetched server-side. The ConvertX hand-off additionally needs
+        // ConvertX running with ALLOW_UNAUTHENTICATED=true (the seeded
+        // ConvertX keeps accounts on; the flip is documented on the docs page).
+        Env: [
+          'PYTHONUNBUFFERED=1',
+          'STIRLING_URL=http://nomad_stirling_pdf:8080',
+          'CONVERTX_URL=http://nomad_convertx:3000',
+        ],
+      }),
+      ui_location: '8520',
+      installed: false,
+      installation_status: 'idle',
+      is_dependency_service: false,
+      is_custom: false,
+      category: 'utility',
+      depends_on: null,
+      metadata: JSON.stringify({ minMemoryMB: 256, minDiskMB: 1024 }),
     },
   ]
 

@@ -4,7 +4,7 @@ import logger from '@adonisjs/core/services/logger'
 import { inject } from '@adonisjs/core'
 import transmit from '@adonisjs/transmit/services/main'
 import { doResumableDownloadWithRetry } from '../utils/downloads.js'
-import { mapGfxToHsaOverride } from '../utils/amd_hsa_override.js'
+import { pickAmdHsaOverride } from '../utils/amd_hsa_override.js'
 import { join } from 'path'
 import os from 'node:os'
 import env from '#start/env'
@@ -14,6 +14,7 @@ import {
   CALIBRE_EMPTY_LIBRARY_ASSET_PATH,
   VAULTWARDEN_STORAGE_PATH,
   MESHCORE_WEB_STORAGE_PATH,
+  COPYPARTY_STORAGE_PATH,
   MEDIA_STORAGE_PATH,
   JELLYFIN_MEDIA_SUBFOLDERS,
 } from '../utils/fs.js'
@@ -27,6 +28,9 @@ import KVStore from '#models/kv_store'
 import { BROADCAST_CHANNELS } from '../../constants/broadcast.js'
 import { KIWIX_LIBRARY_CMD } from '../../constants/kiwix.js'
 import { DEFAULT_OLLAMA_CONTEXT_LENGTH } from '../../constants/ollama.js'
+
+// Written by install_nomad.sh with the host AMD GPU's gfx target.
+const AMD_GFX_MARKER_PATH = '/app/storage/.nomad-amd-gfx'
 
 @inject()
 export class DockerService {
@@ -388,6 +392,17 @@ export class DockerService {
         if (container) {
           const dockerContainer = this.docker.getContainer(container.Id)
 
+          if (serviceName === SERVICE_NAMES.OLLAMA) {
+            // The recreate builds env from scratch, so capture a working HSA override
+            // before this container, the only place it lives, is removed (#1377).
+            try {
+              const inspect = await dockerContainer.inspect()
+              await this._adoptContainerHsaOverride(inspect.Config?.Env)
+            } catch (error: any) {
+              logger.warn(`[DockerService] Could not preserve the Ollama HSA override: ${error.message}`)
+            }
+          }
+
           // Only try to stop if it's running
           if (container.State === 'running') {
             this._broadcast(serviceName, 'stopping', `Stopping container...`)
@@ -716,6 +731,15 @@ export class DockerService {
           service.service_name,
           'preinstall-complete',
           `Pre-install actions for MeshCore Web completed successfully.`
+        )
+      }
+
+      if (service.service_name === SERVICE_NAMES.COPYPARTY) {
+        await this._runPreinstallActions__Copyparty()
+        this._broadcast(
+          service.service_name,
+          'preinstall-complete',
+          `Pre-install actions for copyparty completed successfully.`
         )
       }
 
@@ -1276,6 +1300,143 @@ export class DockerService {
   }
 
   /**
+   * copyparty reads its whole setup from /cfg/copyparty.conf: accounts, the served
+   * volume, the xau upload hook, and the --html-head theme injection. We generate
+   * that config on install with a RANDOM per-box password (the public repo seeds
+   * no working credential; guard G3 of the T-585 security read), mode 0600, mounted
+   * read-only at /cfg. The theme head file and the file-bridge hook scripts are
+   * copied from the admin image assets (prod: /app/assets, baked by the Dockerfile;
+   * dev: the repo checkout's theme/ and contrib/ dirs) into storage and mounted
+   * read-only at /theme and /hooks, OUTSIDE the served /w tree (guards G4/G5).
+   * Idempotent: an existing copyparty.conf is never overwritten, so operator edits
+   * (more accounts, changed password) survive reinstalls; hooks and theme refresh
+   * every install so script fixes reach existing boxes.
+   */
+  private async _runPreinstallActions__Copyparty(): Promise<void> {
+    const appDir = join(process.cwd(), COPYPARTY_STORAGE_PATH)
+    const filesDir = join(appDir, 'files')
+    const configDir = join(appDir, 'config')
+    const hooksDir = join(appDir, 'hooks')
+    const themeDir = join(appDir, 'theme')
+    const stateDir = join(appDir, 'state')
+    const confPath = join(configDir, 'copyparty.conf')
+
+    this._broadcast(
+      SERVICE_NAMES.COPYPARTY,
+      'preinstall',
+      `Running pre-install actions for copyparty...`
+    )
+
+    try {
+      await mkdir(filesDir, { recursive: true })
+      await mkdir(configDir, { recursive: true })
+      await mkdir(hooksDir, { recursive: true })
+      await mkdir(themeDir, { recursive: true })
+      await mkdir(stateDir, { recursive: true })
+
+      const assetRoots = [
+        join(process.cwd(), 'assets', 'copyparty'), // production admin image
+        join(process.cwd(), '..'), // dev: repo checkout (theme/, contrib/)
+      ]
+      const copyAsset = async (candidates: string[], dest: string, mode: number) => {
+        for (const src of candidates) {
+          try {
+            await access(src)
+            await copyFile(src, dest)
+            await chmod(dest, mode)
+            return
+          } catch {
+            // try the next candidate root
+          }
+        }
+        throw new Error(`asset not found in any known root: ${candidates.join(', ')}`)
+      }
+
+      const hookScripts = ['on-upload.sh', 'send-to-stirling.sh', 'send-to-convertx.sh']
+      for (const script of hookScripts) {
+        await copyAsset(
+          assetRoots.map((root) =>
+            root.endsWith('copyparty')
+              ? join(root, 'file-bridge', script)
+              : join(root, 'contrib', 'file-bridge', script)
+          ),
+          join(hooksDir, script),
+          0o755
+        )
+      }
+
+      await copyAsset(
+        assetRoots.map((root) =>
+          root.endsWith('copyparty')
+            ? join(root, 'theme', 'head.html')
+            : join(root, 'theme', 'copyparty', 'head.html')
+        ),
+        join(themeDir, 'head.html'),
+        0o444
+      )
+
+      try {
+        await access(confPath)
+        this._broadcast(
+          SERVICE_NAMES.COPYPARTY,
+          'preinstall',
+          `copyparty config already exists, keeping it (operator-owned).`
+        )
+      } catch {
+        // First install: random password, argon2-hashed in memory by copyparty
+        // (ah-alg), written 0600. The operator reads it from this file on the
+        // box; it is never broadcast or logged.
+        const password = randomBytes(18).toString('base64url')
+        const conf = [
+          '# copyparty on NOMAD (catalog entry nomad_copyparty)',
+          '# Generated on install with a random per-box password. The installer',
+          '# never overwrites this file; edit it to add accounts or change the',
+          '# password. Only the HTTP/WebDAV listener is configured here; no',
+          '# FTP/SFTP/TFTP/SMB.',
+          '',
+          '[global]',
+          '  e2dsa        # file indexing and filesystem scanning',
+          '  e2ts         # multimedia indexing',
+          '  ansi         # colors in log messages',
+          '  no-robots    # ask search engines to stay out',
+          '  ui-norepl    # hide the pi button (a javascript console, not a logo)',
+          '  html-head: @/theme/head.html  # the arcade theme, read-only mount',
+          '  ah-alg: argon2                # password hashing',
+          '',
+          '[accounts]',
+          `  nomad: ${password}`,
+          '',
+          '[/]           # the webroot volume shares /w',
+          '  /w',
+          '  accs:',
+          '    rwmd: nomad   # accounts only; anonymous gets nothing',
+          '  flags:',
+          '    e2ds        # filesystem scanning for this volume',
+          '    # the no-click bridge: after every upload, fork the hook (the',
+          '    # upload never blocks on it), one at a time, 120 s timeout',
+          '    xau: f,c1,t120,/hooks/on-upload.sh',
+          '',
+        ].join('\n')
+        await writeFile(confPath, conf, { mode: 0o600 })
+        await chmod(confPath, 0o600)
+      }
+
+      this._broadcast(
+        SERVICE_NAMES.COPYPARTY,
+        'preinstall',
+        `copyparty config, theme, and bridge hooks are ready.`
+      )
+    } catch (error: any) {
+      this._broadcast(
+        SERVICE_NAMES.COPYPARTY,
+        'preinstall-error',
+        `Failed to prepare copyparty: ${error.message}`
+      )
+      throw new Error(`Pre-install action failed: ${error.message}`)
+    }
+  }
+
+  /**
    * Jellyfin works best when each library points at its own subfolder. Pointing one library at the
    * whole media root and another at a subfolder inside it makes Jellyfin report a "duplicate path"
    * and silently drop the nested library's content. To steer users toward the one-folder-per-type
@@ -1556,7 +1717,9 @@ export class DockerService {
    * Exposed so GpuPassthroughRemediationProvider can tell whether a reinstall would
    * change the running container.
    */
-  async getAmdHsaOverride(options: { quiet?: boolean } = {}): Promise<string | null> {
+  async getAmdHsaOverride(
+    options: { quiet?: boolean; containerEnv?: string[] | null } = {}
+  ): Promise<string | null> {
     return this._resolveAmdHsaOverride(options)
   }
 
@@ -1573,9 +1736,11 @@ export class DockerService {
    * Resolution order:
    *   1. KV `ai.amdHsaOverride` — manual user override; accepts 'none' (disable) or a semver-style value.
    *   2. Marker file `/app/storage/.nomad-amd-gfx` written by install_nomad.sh.
-   *   3. Default: none — let ROCm discover the GPU natively. Users on hardware that still
+   *   3. The override the existing container runs with, when the caller passes its env (#1377).
+   *   4. Default: none — let ROCm discover the GPU natively. Users on hardware that still
    *      needs coercion can force a value via the KV. A hardcoded default gets more wrong
    *      as ROCm adds native targets, so null is the safer forward-looking default.
+   * The pure ordering lives in pickAmdHsaOverride (../utils/amd_hsa_override.ts).
    *
    * Returns null when no override should be applied.
    */
@@ -1599,43 +1764,76 @@ export class DockerService {
     return pepper
   }
 
-  private async _resolveAmdHsaOverride({ quiet = false }: { quiet?: boolean } = {}): Promise<string | null> {
-    const manualRaw = await KVStore.getValue('ai.amdHsaOverride')
-    if (manualRaw !== null && manualRaw !== undefined && String(manualRaw).trim() !== '') {
-      const manual = String(manualRaw).trim().toLowerCase()
-      if (manual === 'none' || manual === 'off' || manual === 'false') {
-        if (!quiet) logger.info('[DockerService] HSA override disabled via ai.amdHsaOverride')
-        return null
-      }
-      if (/^\d+\.\d+\.\d+$/.test(manual)) {
-        if (!quiet) logger.info(`[DockerService] HSA override forced to ${manual} via ai.amdHsaOverride`)
-        return manual
-      }
-      if (!quiet) logger.warn(`[DockerService] Ignoring invalid ai.amdHsaOverride value: ${manualRaw}`)
-    }
+  private async _resolveAmdHsaOverride({
+    quiet = false,
+    containerEnv,
+  }: { quiet?: boolean; containerEnv?: string[] | null } = {}): Promise<string | null> {
+    const manual = await KVStore.getValue('ai.amdHsaOverride')
+    const markerGfx = await this._readAmdGfxMarker()
+    const resolved = pickAmdHsaOverride({ manual, markerGfx, containerEnv })
+    if (quiet) return resolved.value
 
-    try {
-      const gfx = (await readFile('/app/storage/.nomad-amd-gfx', 'utf8')).trim()
-      const mapped = this._mapGfxToHsaOverride(gfx)
-      if (!quiet) logger.info(`[DockerService] AMD gfx marker '${gfx}' → HSA override ${mapped ?? 'none'}`)
-      return mapped
-    } catch {
-      // Marker absent — most likely an existing install upgraded without re-running
-      // install_nomad.sh. Fall through to the default.
+    if (resolved.invalidManual !== undefined) {
+      logger.warn(`[DockerService] Ignoring invalid ai.amdHsaOverride value: ${resolved.invalidManual}`)
     }
-
-    if (!quiet) logger.warn(
-      '[DockerService] AMD GPU configured but no gfx marker (/app/storage/.nomad-amd-gfx) and no ' +
-        'ai.amdHsaOverride KV; relying on native ROCm discovery. iGPUs not on the bundled rocblas ' +
-        'allowlist (e.g. 780M/gfx1103, 680M/gfx1035) will silently fall back to CPU. Set the ' +
-        'ai.amdHsaOverride KV (e.g. 11.0.0 for a 780M) and force-reinstall the AI service if so.'
-    )
-    return null
+    switch (resolved.source) {
+      case 'kv-disabled':
+        logger.info('[DockerService] HSA override disabled via ai.amdHsaOverride')
+        break
+      case 'kv':
+        logger.info(`[DockerService] HSA override forced to ${resolved.value} via ai.amdHsaOverride`)
+        break
+      case 'marker':
+        logger.info(
+          `[DockerService] AMD gfx marker '${markerGfx}' → HSA override ${resolved.value ?? 'none'}`
+        )
+        break
+      case 'container':
+        logger.info(
+          `[DockerService] Keeping HSA override ${resolved.value} from the existing container`
+        )
+        break
+      case 'default':
+        logger.warn(
+          `[DockerService] AMD GPU configured but no gfx marker (${AMD_GFX_MARKER_PATH}) and no ` +
+            'ai.amdHsaOverride KV; relying on native ROCm discovery. iGPUs not on the bundled rocblas ' +
+            'allowlist (e.g. 780M/gfx1103, 680M/gfx1035) will silently fall back to CPU. Set the ' +
+            'ai.amdHsaOverride KV (e.g. 11.0.0 for a 780M) and force-reinstall the AI service if so.'
+        )
+        break
+    }
+    return resolved.value
   }
 
-  private _mapGfxToHsaOverride(gfx: string): string | null {
-    // Pure mapping lives in ../utils/amd_hsa_override.ts so it stays unit-testable.
-    return mapGfxToHsaOverride(gfx)
+  /**
+   * Before a force reinstall removes nomad_ollama, persist the HSA override it runs with
+   * when nothing else would supply one (#1377). The recreate builds env from scratch, so
+   * without this an upgraded box with a hand-set override loses it. Persisting rather than
+   * passing it along in memory keeps it through a reinstall that fails after removal, and
+   * shows it in the Set GFX Override modal.
+   */
+  private async _adoptContainerHsaOverride(containerEnv: string[] | null | undefined): Promise<void> {
+    const resolved = pickAmdHsaOverride({
+      manual: await KVStore.getValue('ai.amdHsaOverride'),
+      markerGfx: await this._readAmdGfxMarker(),
+      containerEnv,
+    })
+    if (resolved.source !== 'container' || !resolved.value) return
+
+    await KVStore.setValue('ai.amdHsaOverride', resolved.value)
+    logger.info(
+      `[DockerService] Persisted HSA override ${resolved.value} from the existing container to ai.amdHsaOverride`
+    )
+  }
+
+  private async _readAmdGfxMarker(): Promise<string | null> {
+    try {
+      return (await readFile(AMD_GFX_MARKER_PATH, 'utf8')).trim()
+    } catch {
+      // Marker absent: most likely an existing install upgraded without re-running
+      // install_nomad.sh.
+      return null
+    }
   }
 
   /**
@@ -1837,7 +2035,7 @@ export class DockerService {
       const baseEnv = inspectData.Config?.Env || []
       let finalEnv = baseEnv
       if (updatedAmdGpuConfigured) {
-        const hsaOverride = await this._resolveAmdHsaOverride()
+        const hsaOverride = await this._resolveAmdHsaOverride({ containerEnv: baseEnv })
         finalEnv = baseEnv.filter(
           (e: string) =>
             !e.startsWith('HSA_OVERRIDE_GFX_VERSION=') && !e.startsWith('OLLAMA_IGPU_ENABLE=')
@@ -2375,12 +2573,27 @@ export class DockerService {
 
   /**
    * Check if a Docker image exists locally.
-   * @param imageName - The name and tag of the image (e.g., "nginx:latest")
+   * @param imageName - The name and tag of the image (e.g., "nginx:latest"),
+   *   optionally digest-pinned ("copyparty/iv:1.20.25@sha256:...")
    * @returns - True if the image exists locally, false otherwise
    */
   private async _checkImageExists(imageName: string): Promise<boolean> {
     try {
       const images = await this.docker.listImages()
+
+      // A digest-pinned reference ("name:tag@sha256:...") never appears in
+      // RepoTags verbatim: docker records the pull as RepoTags "name:tag"
+      // and RepoDigests "name@sha256:...". Match either form.
+      const atSign = imageName.indexOf('@')
+      if (atSign > -1) {
+        const tagRef = imageName.substring(0, atSign) // name:tag
+        const digestRef = `${tagRef.substring(0, tagRef.lastIndexOf(':'))}${imageName.substring(atSign)}` // name@sha256:...
+        return images.some(
+          (image) =>
+            (image.RepoTags && image.RepoTags.includes(tagRef)) ||
+            (image.RepoDigests && image.RepoDigests.includes(digestRef))
+        )
+      }
 
       // Check if any image has a RepoTag that matches the requested image
       return images.some((image) => image.RepoTags && image.RepoTags.includes(imageName))

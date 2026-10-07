@@ -23,6 +23,14 @@ export const VAULTWARDEN_STORAGE_PATH = '/storage/vaultwarden'
 // _runPreinstallActions__MeshCoreWeb.
 export const MESHCORE_WEB_STORAGE_PATH = '/storage/meshcore-web'
 
+/**
+ * copyparty's storage root. files/ is the served tree (the File Browser
+ * successor), config/ the generated copyparty.conf (0600, mounted ro),
+ * hooks/ the file-bridge scripts (mounted ro), theme/ the head injection
+ * (mounted ro). See DockerService._runPreinstallActions__Copyparty.
+ */
+export const COPYPARTY_STORAGE_PATH = '/storage/copyparty'
+
 export async function listDirectoryContents(path: string): Promise<FileEntry[]> {
   const entries = await readdir(path, { withFileTypes: true })
   const results: FileEntry[] = []
