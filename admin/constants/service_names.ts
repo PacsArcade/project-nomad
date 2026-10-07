@@ -20,4 +20,5 @@ export const SERVICE_NAMES = {
   JELLYFIN: 'nomad_jellyfin',
   TRANSLATE: 'nomad_translate',
   CONVERTX: 'nomad_convertx',
+  COPYPARTY: 'nomad_copyparty',
 }

@@ -6,6 +6,8 @@ export interface ParsedImageReference {
   namespace: string
   repo: string
   tag: string
+  /** Content digest when the reference is digest-pinned (name:tag@sha256:...), else undefined */
+  digest?: string
   /** Full name for registry API calls: namespace/repo */
   fullName: string
 }
@@ -37,6 +39,16 @@ export class ContainerRegistryService {
     let registry: string
     let remainder: string
     let tag = 'latest'
+    let digest: string | undefined
+
+    // Split off a digest pin first ("name:tag@sha256:..."). The digest's own
+    // colon would otherwise win the last-colon tag split below and the digest
+    // hex would be misread as the tag.
+    const atSign = image.indexOf('@')
+    if (atSign > -1) {
+      digest = image.substring(atSign + 1)
+      image = image.substring(0, atSign)
+    }
 
     // Split off the tag
     const lastColon = image.lastIndexOf(':')
@@ -71,6 +83,7 @@ export class ContainerRegistryService {
       namespace,
       repo,
       tag,
+      digest,
       fullName: remainder,
     }
   }
