@@ -1,12 +1,14 @@
 #!/bin/sh
-# send-to-stirling.sh - hand a file from File Browser to Stirling PDF.
+# send-to-stirling.sh - hand a file to Stirling PDF.
 #
-# Run from File Browser's shell panel (the < > button in the header). The
-# shell opens in the folder you are browsing, so pass the file name as it
-# appears in the listing:
-#
-#   /bridge/send-to-stirling.sh "my scan.pdf"
-#   /bridge/send-to-stirling.sh "my scan.pdf" 3
+# Two callers:
+#   1. File Browser's shell panel (the < > button in the header). The shell
+#      opens in the folder you are browsing, so pass the file name as it
+#      appears in the listing:
+#        /bridge/send-to-stirling.sh "my scan.pdf"
+#        /bridge/send-to-stirling.sh "my scan.pdf" 3
+#   2. copyparty's on-upload hook (contrib/file-bridge/on-upload.sh), which
+#      passes the absolute path of the file that just landed.
 #
 # The optional second argument is Stirling's optimize level (1-9, default 2;
 # higher means smaller but lower quality).
@@ -14,6 +16,16 @@
 # What it does: posts the file to Stirling's compress-pdf API and saves the
 # result next to the original as NAME-stirling.pdf, then prints the link to
 # Stirling's compress tool page for follow-up work.
+#
+# Filenames: the file rides to Stirling on stdin under the FIXED name
+# upload.pdf (curl -F "fileInput=@-;filename=upload.pdf" < file). A comma or
+# semicolon in the real name used to break curl's -F parser (curl exit 26,
+# "Budget, final.pdf" read as two files); a quote could break the multipart
+# header. The stdin shape closes both, so any legal filename uploads clean.
+#
+# Failure visibility: when the hand-off fails, a marker file
+# NAME.pdf.bridge-failed is written beside the upload, so the failure is
+# visible in the file listing. A later success removes the marker.
 #
 # Config: STIRLING_URL env var, required; the script exits with an error
 # when it is not set. Point it at your Stirling, for example
@@ -48,32 +60,40 @@ fi
 
 base=$(basename "$file")
 stem=${base%.*}
-out="$stem-stirling.pdf"
+dir=$(dirname "$file")
+out="$dir/$stem-stirling.pdf"
+marker="$file.bridge-failed"
+
+# The visible failure marker: one line of plain words, readable in any
+# listing. Cleared by the next successful hand-off.
+fail() {
+  reason="$1"
+  echo "send-to-stirling: $reason" >&2
+  printf '%s\n' "hand-off to Stirling failed: $reason" > "$marker" 2>/dev/null || true
+  exit 1
+}
 
 if [ -e "$out" ]; then
-  echo "send-to-stirling: $out already exists, refusing to overwrite" >&2
-  exit 1
+  fail "$out already exists, refusing to overwrite"
 fi
 
-# A double quote in the file name would break the multipart header.
-safe_base=$(printf '%s' "$base" | tr -d '"')
-
+# The file goes on stdin under a fixed name, so commas, semicolons and
+# quotes in the real name can never reach the multipart parser.
 if command -v curl >/dev/null 2>&1; then
   code=$(curl -s -o "$out" -w '%{http_code}' \
-    -F "fileInput=@$file;type=application/pdf" \
+    -F "fileInput=@-;filename=upload.pdf;type=application/pdf" \
     -F "optimizeLevel=$level" \
-    "$ENDPOINT") || { echo "send-to-stirling: cannot reach Stirling at $STIRLING_URL" >&2; rm -f "$out"; exit 1; }
+    "$ENDPOINT" < "$file") || { rm -f "$out"; fail "cannot reach Stirling at $STIRLING_URL"; }
   if [ "$code" != "200" ]; then
-    echo "send-to-stirling: Stirling answered HTTP $code" >&2
     rm -f "$out"
-    exit 1
+    fail "Stirling answered HTTP $code"
   fi
 else
   boundary="----wanderpac-bridge-$$"
   body=$(mktemp)
   {
     printf '%s\r\n' "--$boundary"
-    printf 'Content-Disposition: form-data; name="fileInput"; filename="%s"\r\n' "$safe_base"
+    printf 'Content-Disposition: form-data; name="fileInput"; filename="upload.pdf"\r\n'
     printf 'Content-Type: application/pdf\r\n'
     printf '\r\n'
     cat "$file"
@@ -89,8 +109,7 @@ else
     --post-file="$body" \
     "$ENDPOINT"; then
     rm -f "$body" "$out"
-    echo "send-to-stirling: Stirling refused the file (or is unreachable at $STIRLING_URL)" >&2
-    exit 1
+    fail "Stirling refused the file (or is unreachable at $STIRLING_URL)"
   fi
   rm -f "$body"
 fi
@@ -98,11 +117,11 @@ fi
 # Stirling answers errors with HTML or JSON; a real answer starts with %PDF.
 magic=$(head -c 4 "$out" || true)
 if [ "$magic" != "%PDF" ]; then
-  echo "send-to-stirling: answer was not a PDF; Stirling rejected the file" >&2
   rm -f "$out"
-  exit 1
+  fail "answer was not a PDF; Stirling rejected the file"
 fi
 
+rm -f "$marker"
 echo "sent: $base"
-echo "saved: $out (in this folder)"
+echo "saved: $out (beside the original)"
 echo "open Stirling's compress tool: $TOOL_PAGE"

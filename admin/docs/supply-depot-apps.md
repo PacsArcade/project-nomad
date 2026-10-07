@@ -237,6 +237,24 @@ A file converter that runs entirely on your NOMAD. Drop in a file, pick the form
 
 **Works offline:** Fully. Every converter is bundled inside the app on your NOMAD and the whole job happens on the box's own processor. Nothing is uploaded to any outside service, which is the reason to run a converter on NOMAD instead of using an online one. Two things follow: big video jobs can take a while on a modest box, and the size of file you can convert is limited by free disk space, since there is no fixed upload limit in this version.
 
+## Files (copyparty) {% #copyparty %}
+
+A fast file manager for your NOMAD, and the planned successor to File Browser (whose makers have stopped maintaining it). Browse, upload, download, and organize your content folders, play audio and video right in the page, and see thumbnails of your photos. Both apps stay installed side by side, so nothing changes about how you use File Browser today.
+
+**Official site:** [github.com/9001/copyparty](https://github.com/9001/copyparty) · **Source:** same repository
+
+**First time you open it:** You'll be asked to sign in. The username is `nomad`, and the password was generated randomly for your NOMAD during install. You'll find it in the file `storage/copyparty/config/copyparty.conf` on your NOMAD (look at the line under `[accounts]`). It's a long random string, so copy-paste it, and change it to something you like by editing that file and restarting the app.
+
+**The bridge, no clicks needed:** When you upload a PDF, a compressed copy appears beside it a few seconds later, made by Stirling PDF automatically. Office documents, images, and audio get the same treatment through ConvertX (documents become PDFs, images become WebP, audio becomes MP3). If a hand-off ever fails, a marker file ending in `.bridge-failed` appears right beside your upload, so a failure is never silent.
+
+**A note on the ConvertX half:** The automatic document/image/audio conversion needs ConvertX to allow its local API. On NOMAD, ConvertX keeps its account wall on by default, so these conversions stay quiet until you flip two switches: on the Supply Depot page, find ConvertX, click **Manage > Edit**, and add `ALLOW_UNAUTHENTICATED=true` to its environment variables. PDF compression through Stirling works out of the box.
+
+**What you can see:** The same content folders as File Browser: books, maps, media, zim, and kb_uploads, plus anything you drop in the top level. The apps' behind-the-scenes folders are kept out, just like in File Browser.
+
+**Your data:** Everything lives in `storage/copyparty/files` and the shared content folders. The app's own config, theme, and hook scripts live in `storage/copyparty` and are mounted read-only, so the app can never rewrite its own rules.
+
+**Works offline:** Fully. Browsing, uploading, the media player, thumbnails, and the bridge all run on your NOMAD with nothing reaching the internet.
+
 ## Meshtastic Web {% #meshtastic-web %}
 
 A browser-based control panel for [Meshtastic](https://meshtastic.org) devices. Meshtastic is off-grid, long-range radio messaging: small, inexpensive LoRa radios that form their own mesh network and send text messages and GPS locations for miles with no cell service, no internet, and no fees. This app is how you configure those radios and read and send messages from a full-size screen.
