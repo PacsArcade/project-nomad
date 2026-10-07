@@ -1,0 +1,448 @@
+<!--
+  head.html, the WanderPac arcade theme for copyparty.
+
+  What this is: the text copyparty injects into the <head> of every HTML
+  page when the volume config sets `html-head: @/theme/head.html` (the @
+  form reads this file; no %% prefix, so it is static text, never jinja).
+  Verified against image docker.io/copyparty/iv:1.20.25 (digest
+  sha256:eb81dfa99d38c0778e4e713a6bd697db7557755eff8e5e69ae26d6a225438b41,
+  the 1.20.25 release of 2026-10-05). Dark glass lit by ember, pixel-cut
+  block edges, the 8 px block as the unit. Dark only, ever: the arcade
+  darks are set on :root and on copyparty's light-theme html classes, so
+  the theme switch cannot land on a light face.
+
+  Guard G5 (lane T-585 security read): this file is house-owned, written by
+  the catalog install step, mounted read-only at /theme, and never sits
+  inside the served volume.
+
+  The two mockup pins this skin carries (forge set copyparty-phone-r1-970217):
+    (a) icons get labels: every rail button gains a plain-word label under
+        its glyph, on top of copyparty's own hover tooltips.
+    (b) nothing pretend-clickable: the pi mark in the stock footer is a
+        hidden javascript console, not a logo, so the server config hides
+        it (ui-norepl). Upstream's credit is plain text at the foot of the
+        listing, added here as non-interactive words.
+
+  How to recolor: edit the variables in the ONE customization point block,
+  between the BEGIN and END fences. Everything below the fence reads those
+  variables. Values come from the WanderPac arcade tokens
+  (theme/arcade-tokens.css in PacsArcade/wanderpac, lane T-572), the same
+  set the File Browser and Stirling skins carry.
+
+  License: Apache License 2.0, the same license as the NOMAD
+  project-nomad repository this file ships with.
+-->
+<style>
+/* ======================= BEGIN customization point ===================== */
+/* The ONE place colors change. One variable per line, plain words. */
+:root {
+  /* The darks. ground is the page itself. raised and overlay are panels
+     sitting on it, each one step lighter, like blocks stacked on a table.
+     well sinks below the ground for inputs. */
+  --arcade-ground: #0A0907;
+  --arcade-ground-raised: #17130D;
+  --arcade-ground-overlay: #1E1911;
+  --arcade-well: #060403;
+
+  /* Lines. line is the default border, line-strong when an edge needs to
+     read one step louder. */
+  --arcade-line: #332C22;
+  --arcade-line-strong: #4A4133;
+
+  /* Text. bone is reading text, 16.4 to 1 on ground. muted is captions
+     and placeholders, 7.8 to 1 on ground. Both clear the 4.5 to 1 house
+     floor with room. */
+  --arcade-bone: #EDE9E0;
+  --arcade-muted: #A8A296;
+
+  /* Ember, the one orange. The arcade's light: accents, glows, active
+     states. Never a panel fill, never a big area. ember-bright is hover
+     and glow peak, ember-dim is pressed state and ember borders on dark
+     glass. Ember text on ground is 6.7 to 1, so a short label may be
+     ember; long reading text stays bone. */
+  --arcade-ember: #FF6400;
+  --arcade-ember-bright: #FF8A3D;
+  --arcade-ember-dim: #C24E00;
+  --arcade-ember-glow: rgba(255, 100, 0, 0.35);
+
+  /* State colors. green is done, healthy. danger is errors and failed
+     hand-offs. A state always gets words too; color is never the only
+     signal. */
+  --arcade-green: #79D2A6;
+  --arcade-danger: #E08070;
+
+  /* Glass. A dark panel you can almost see through: the ground behind it
+     blurred, a hairline of bone light on its edge, a soft shadow below,
+     and a thin top highlight like light catching a block's rim. */
+  --arcade-glass-bg: rgba(23, 19, 13, 0.72);
+  --arcade-glass-bg-strong: rgba(23, 19, 13, 0.88);
+  --arcade-glass-blur: 14px;
+  --arcade-glass-blur-strong: 22px;
+  --arcade-glass-border: rgba(237, 233, 224, 0.10);
+  --arcade-glass-border-ember: rgba(255, 100, 0, 0.45);
+  --arcade-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.50);
+  --arcade-glass-highlight: inset 0 1px 0 rgba(237, 233, 224, 0.08);
+
+  /* The digital edge. Panels, tiles, dividers and meters do not round
+     off. Their corners are cut square, one clean pixel step. cut is the
+     size of one corner step. */
+  --arcade-cut: 8px;
+  --arcade-cut-sm: 4px;
+  --arcade-edge-step: 2px;
+  --arcade-clip-panel: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+  --arcade-clip-chip: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px);
+
+  /* The block. Everything snaps to it. */
+  --arcade-block: 8px;
+  --arcade-block-stack-gap: 2px;
+  --arcade-block-meter-seg: 12px;
+
+  /* Spacing, in whole blocks. */
+  --arcade-space-1: 8px;
+  --arcade-space-2: 16px;
+  --arcade-space-3: 24px;
+  --arcade-space-4: 32px;
+  --arcade-space-6: 48px;
+  --arcade-space-8: 64px;
+
+  /* Radii. Buttons stay round, standing law. Panels, tiles and meters do
+     not round: they are blocks, and their corners are cut, not curved. */
+  --arcade-radius-button: 999px;
+  --arcade-radius-soft: 10px;
+  --arcade-radius-none: 0px;
+
+  /* Type. The display face is the pixel voice for the house name; body is
+     reading text, no serifs anywhere. mono is numbers and code. */
+  --arcade-font-display: "Silkscreen", "Courier New", monospace;
+  --arcade-font-body: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --arcade-font-mono: ui-monospace, "Cascadia Mono", "Courier New", monospace;
+  --arcade-text-xs: 11px;
+  --arcade-text-sm: 13px;
+  --arcade-text-base: 15px;
+  --arcade-text-lg: 18px;
+  --arcade-text-xl: 24px;
+  --arcade-text-display: 32px;
+  --arcade-line-height-body: 1.5;
+  --arcade-line-height-title: 1.2;
+  --arcade-weight-regular: 400;
+  --arcade-weight-bold: 700;
+
+  /* Focus. A keyboard focus ring is an ember ring with a dark gap. */
+  --arcade-focus-ring: 0 0 0 2px #0A0907, 0 0 0 4px #FF6400;
+
+  /* Motion. Quick and a little stepped, like a block landing. */
+  --arcade-motion-snap: 120ms;
+  --arcade-motion-ease: cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+/* ======================== END customization point ====================== */
+
+
+/* ---------------------------------------------------------------------- */
+/* Mapping: copyparty's own variable vocabulary (browser.css, ui.css)      */
+/* reads the arcade values, so every upstream component follows without    */
+/* touching its rules. The html.y / html.bz classes are copyparty's light  */
+/* and alternate themes; they get the same darks, there is no light face.  */
+/* ---------------------------------------------------------------------- */
+
+:root,
+html.y,
+html.bz {
+  --fg: var(--arcade-bone);
+  --fg-max: var(--arcade-bone);
+  --fg2-max: var(--arcade-bone);
+  --fg-weak: var(--arcade-muted);
+
+  --bg-u6: var(--arcade-ground-overlay);
+  --bg-u5: var(--arcade-ground-overlay);
+  --bg-u4: var(--arcade-ground-raised);
+  --bg-u3: var(--arcade-ground-raised);
+  --bg-u2: var(--arcade-ground-raised);
+  --bg-u1: var(--arcade-ground-raised);
+  --bg: var(--arcade-ground);
+  --bgg: var(--arcade-ground);
+  --bg-d1: var(--arcade-ground);
+  --bg-d2: var(--arcade-well);
+  --bg-d3: var(--arcade-well);
+  --bg-max: var(--arcade-well);
+
+  --tab-alt: var(--arcade-ember-bright);
+  --row-alt: var(--arcade-ground-raised);
+
+  /* Links read ember; hovered links brighten. */
+  --a: var(--arcade-ember);
+  --a-b: var(--arcade-ember-dim);
+  --a-hil: var(--arcade-ember-bright);
+  --a-dark: var(--arcade-ember-dim);
+  --a-gray: var(--arcade-muted);
+
+  --btn-fg: var(--arcade-ember);
+  --btn-bg: var(--arcade-glass-bg);
+  --btn-h-fg: var(--arcade-ember-bright);
+  --btn-h-bg: var(--arcade-ground-overlay);
+  --btn-1-fg: var(--arcade-ground);
+  --btn-1-bg: var(--arcade-ember);
+  --btn-1h-fg: var(--arcade-ground);
+  --btn-1h-bg: var(--arcade-ember-bright);
+  --chk-fg: var(--arcade-ember);
+  --txt-sh: var(--arcade-well);
+  --txt-bg: var(--arcade-well);
+
+  --op-aa-fg: var(--arcade-ember-bright);
+  --op-aa-bg: var(--arcade-ground-overlay);
+
+  --scroll: var(--arcade-ember);
+  --sel-fg: var(--arcade-ground);
+  --sel-bg: var(--arcade-ember);
+}
+
+/* ---------------------------------------------------------------------- */
+/* The page and the two fixed bars.                                        */
+/* ---------------------------------------------------------------------- */
+
+body {
+  background: var(--arcade-ground);
+  color: var(--arcade-bone);
+  font-family: var(--arcade-font-body);
+}
+
+/* The top status line. The house name leads it; the server's own stats
+   follow, muted. */
+#srv_info {
+  background: var(--arcade-ground-raised);
+  border-bottom: 1px solid var(--arcade-line);
+  font-family: var(--arcade-font-mono);
+  color: var(--arcade-muted);
+}
+#srv_info::before {
+  content: "WanderPac Files // ";
+  font-family: var(--arcade-font-display);
+  color: var(--arcade-ember);
+  letter-spacing: 1px;
+}
+#acc_info a {
+  color: var(--arcade-bone);
+}
+
+/* The icon rail: a glass strip of blocks. Every button is glyph over
+   plain-word label, so no glyph stands unexplained (mockup pin a). */
+#ops {
+  background: var(--arcade-glass-bg);
+  backdrop-filter: blur(var(--arcade-glass-blur));
+  -webkit-backdrop-filter: blur(var(--arcade-glass-blur));
+  border-bottom: 1px solid var(--arcade-glass-border);
+  box-shadow: var(--arcade-glass-highlight);
+  padding: var(--arcade-space-1) var(--arcade-space-2);
+}
+#ops a {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 56px;
+  padding: 6px 4px;
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: var(--arcade-radius-none);
+}
+#ops a:hover {
+  background: var(--arcade-ground-overlay);
+  border-color: var(--arcade-line);
+}
+#ops a.act {
+  background: var(--arcade-ground-overlay);
+  border: 1px solid var(--arcade-ember-dim);
+  border-bottom: 3px solid var(--arcade-ember);
+  box-shadow: none;
+}
+#ops a::after {
+  font-family: var(--arcade-font-body);
+  font-size: var(--arcade-text-xs);
+  line-height: 1;
+  color: var(--arcade-muted);
+  text-shadow: none;
+}
+#ops a:hover::after,
+#ops a.act::after {
+  color: var(--arcade-bone);
+}
+#opa_x::after { content: "close"; }
+#opa_srch::after { content: "search"; }
+#opa_del::after { content: "unpost"; }
+#opa_up::after { content: "upload"; }
+#opa_bup::after { content: "basic up"; }
+#opa_mkd::after { content: "new folder"; }
+#opa_md::after { content: "new note"; }
+#opa_msg::after { content: "message"; }
+#opa_auc::after { content: "player"; }
+#opa_cfg::after { content: "settings"; }
+
+/* The opened panels under the rail: glass blocks with cut corners. */
+.opbox {
+  background: var(--arcade-glass-bg-strong);
+  backdrop-filter: blur(var(--arcade-glass-blur-strong));
+  -webkit-backdrop-filter: blur(var(--arcade-glass-blur-strong));
+  border: 1px solid var(--arcade-glass-border);
+  border-radius: var(--arcade-radius-none);
+  clip-path: var(--arcade-clip-panel);
+  box-shadow: var(--arcade-glass-shadow), var(--arcade-glass-highlight);
+}
+.opview input[type="text"],
+.opview select {
+  background: var(--arcade-well);
+  border: 1px solid var(--arcade-line);
+  border-radius: var(--arcade-radius-none);
+  color: var(--arcade-bone);
+}
+.opview input[type="submit"],
+.opview button {
+  border-radius: var(--arcade-radius-button);
+}
+
+/* The breadcrumb path: the house voice, display face, ember on ground. */
+#path,
+#path a {
+  font-family: var(--arcade-font-display);
+  color: var(--arcade-ember);
+  letter-spacing: 1px;
+}
+
+/* The folder tree: a raised panel, muted labels, ember for the open one. */
+#tree {
+  background: var(--arcade-ground-raised);
+  border-right: 1px solid var(--arcade-line);
+}
+#tree a {
+  color: var(--arcade-muted);
+}
+#tree a.hl,
+#tree a:hover {
+  color: var(--arcade-ember-bright);
+}
+
+/* ---------------------------------------------------------------------- */
+/* The listing table.                                                      */
+/* ---------------------------------------------------------------------- */
+
+#files {
+  border-collapse: collapse;
+  font-family: var(--arcade-font-body);
+}
+#files thead th {
+  background: var(--arcade-ground-raised);
+  color: var(--arcade-muted);
+  border-bottom: 2px solid var(--arcade-ember-dim);
+  font-family: var(--arcade-font-display);
+  font-weight: var(--arcade-weight-regular);
+  letter-spacing: 1px;
+}
+#files td {
+  border-bottom: 1px solid var(--arcade-line);
+}
+#files tr:nth-child(2n) td,
+#files tr:nth-child(2n+1) td+td {
+  background: transparent;
+}
+#files tbody tr:hover td,
+#files tbody tr:hover td+td {
+  background: var(--arcade-ground-overlay);
+}
+#files tbody a {
+  color: var(--arcade-ember);
+}
+#files tbody a:hover {
+  color: var(--arcade-ember-bright);
+}
+/* Numbers and dates read in mono, muted. */
+#files td+td,
+#files td:last-child {
+  font-family: var(--arcade-font-mono);
+  color: var(--arcade-muted);
+}
+
+/* The bridge made visible (mockup point 2). A failed hand-off leaves a
+   NAME.bridge-failed marker beside the upload; its row carries the danger
+   wash and the marker link reads in danger words. A processed PDF pair
+   (NAME-stirling.pdf) gets the quiet green edge. */
+#files tbody tr:has(a[href$=".bridge-failed"]) td {
+  background: rgba(224, 128, 112, 0.10);
+}
+#files tbody a[href$=".bridge-failed"] {
+  color: var(--arcade-danger);
+  font-weight: var(--arcade-weight-bold);
+}
+#files tbody tr:has(a[href*="-stirling.pdf"]) td:first-child {
+  box-shadow: inset 4px 0 0 var(--arcade-green);
+}
+
+/* The prologue / epilogue strips and the control-panel link line. */
+.logue {
+  color: var(--arcade-muted);
+}
+#wfp a {
+  color: var(--arcade-ember);
+}
+
+/* Credit, plain words, not a button: the pi glyph in the stock footer is a
+   hidden javascript console, so the server config hides it (ui-norepl) and
+   upstream's credit lives here as text that goes nowhere (mockup pin b). */
+#wrap::after {
+  content: "powered by copyparty";
+  display: block;
+  margin: var(--arcade-space-4) 0 var(--arcade-space-2);
+  font-family: var(--arcade-font-mono);
+  font-size: var(--arcade-text-xs);
+  color: var(--arcade-muted);
+}
+
+/* Tooltip and toast: glass chips with cut corners. */
+#tt,
+#toast {
+  background: var(--arcade-glass-bg-strong);
+  backdrop-filter: blur(var(--arcade-glass-blur-strong));
+  -webkit-backdrop-filter: blur(var(--arcade-glass-blur-strong));
+  border: 1px solid var(--arcade-glass-border);
+  border-radius: var(--arcade-radius-none);
+  clip-path: var(--arcade-clip-chip);
+  color: var(--arcade-bone);
+  box-shadow: var(--arcade-glass-shadow);
+}
+
+/* The bottom-right widget (zip / player shortcuts). */
+#widget {
+  background: var(--arcade-glass-bg-strong);
+  backdrop-filter: blur(var(--arcade-glass-blur-strong));
+  -webkit-backdrop-filter: blur(var(--arcade-glass-blur-strong));
+  border: 1px solid var(--arcade-glass-border);
+  border-radius: var(--arcade-radius-none);
+  clip-path: var(--arcade-clip-chip);
+}
+
+/* The up2k drop target reads as one big ember-edged block. */
+#op_up2k .u2btn,
+#u2drop,
+.u2prog {
+  border-radius: var(--arcade-radius-none);
+}
+
+/* Focus always shows the ember ring. */
+a:focus-visible,
+input:focus-visible,
+button:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: var(--arcade-focus-ring);
+}
+
+/* Phone width: the rail labels shrink but never vanish, and the brand
+   line keeps its place. The listing table stays horizontally scrollable
+   (upstream layout is desktop-first; T-576 noted the overflow). */
+@media (max-width: 480px) {
+  #ops a {
+    min-width: 44px;
+    font-size: 1.2em;
+  }
+  #ops a::after {
+    font-size: 10px;
+  }
+}
+</style>

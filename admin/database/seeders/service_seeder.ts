@@ -261,9 +261,9 @@ export default class ServiceSeeder extends BaseSeeder {
       // Pinned to the verified latest v2.x release, v2.63.23 (2026-07-27; upstream archived
       // the project 2026-09-01, so this is the final line of releases). Manifest-list digest
       // sha256:a469ea076d4a1b4b1d86a41d130f2f536cd9da996a2b1fb39c0d7635f9d89b9a. Kept as a
-      // tag pin, not a tag@digest pin: the update checker's parseImageReference splits on the
-      // last colon and would read the digest as the tag, and _checkImageExists matches
-      // RepoTags, which a digest-pulled image does not carry.
+      // tag pin rather than tag@digest: v2.63.23 is the last release there will ever be, so
+      // the pin never moves and the tag alone already names exactly one image. (Digest pins
+      // parse correctly since the T-585 parseImageReference fix; copyparty uses one.)
       container_image: 'filebrowser/filebrowser:v2.63.23',
       source_repo: 'https://github.com/filebrowser/filebrowser',
       // Browsable root is storage/filebrowser/files (persistent, so files created at the top level
@@ -653,6 +653,84 @@ export default class ServiceSeeder extends BaseSeeder {
       is_custom: false,
       category: 'utility',
       depends_on: null,
+    },
+    {
+      // copyparty: the file-tool successor-in-waiting (lane T-585; File Browser's
+      // upstream archived 2026-09-01). Same content folders as File Browser, plus
+      // the two things File Browser cannot do: event hooks (the no-click bridge,
+      // xau fires /hooks/on-upload.sh on every upload) and a built-in media
+      // player/thumbnails. File Browser's tile STAYS; removing it is a later ruling.
+      service_name: SERVICE_NAMES.COPYPARTY,
+      friendly_name: 'Files (copyparty)',
+      powered_by: 'copyparty',
+      display_order: 31,
+      description:
+        'Fast file manager with media previews - browse, upload, and play files, and watch PDFs and documents get processed automatically when you drop them in',
+      icon: 'IconFolderShare',
+      // Official image, the iv variant (the full image WITH media previews and
+      // thumbnails: Pillow, FFmpeg, libvips - the Admiral's ruling A on Desk card
+      // 970216). Digest-pinned at v1.20.25 (2026-10-05), the newest release at pin
+      // time and the security release carrying the last open advisory fix; all 17
+      // published advisories are fixed at or before this version. Manifest-list
+      // digest verified against the Docker Hub registry API 2026-10-06. Update
+      // policy: the auto-update checker follows same-major tags from the tag part
+      // of this reference (parseImageReference handles digest pins since T-585);
+      // an applied update moves to the new tag and drops the digest pin, so a
+      // re-pin is a catalog change like this one.
+      container_image:
+        'copyparty/iv:1.20.25@sha256:eb81dfa99d38c0778e4e713a6bd697db7557755eff8e5e69ae26d6a225438b41',
+      source_repo: 'https://github.com/9001/copyparty',
+      // Everything is driven by the generated /cfg/copyparty.conf (accounts,
+      // volume, hooks, theme), written on install by
+      // _runPreinstallActions__Copyparty with a random per-box password.
+      container_command: null,
+      container_config: JSON.stringify({
+        HostConfig: {
+          RestartPolicy: { Name: 'unless-stopped' },
+          PortBindings: { '3923/tcp': [{ HostPort: '8520' }] },
+          Binds: [
+            // The served tree (the / volume). Same content folders as File
+            // Browser, and for the same reason: the sensitive/app-internal
+            // folders simply are not present, so they cannot be browsed.
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/copyparty/files:/w`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/books:/w/books`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/maps:/w/maps`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/media:/w/media`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/kb_uploads:/w/kb_uploads`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/zim:/w/zim`,
+            // G3/G5/G4 (lane T-585 security read): config, theme head file and
+            // hook scripts are all house-owned and mounted READ-ONLY, and none
+            // of them live inside the served tree (/w). A user-writable head
+            // file or hook would be a code-execution surface.
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/copyparty/config:/cfg:ro`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/copyparty/theme:/theme:ro`,
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/copyparty/hooks:/hooks:ro`,
+            // Thumbnail/index cache survives recreates.
+            `${ServiceSeeder.NOMAD_STORAGE_ABS_PATH}/copyparty/state:/state`,
+          ],
+        },
+        ExposedPorts: { '3923/tcp': {} },
+        // G1: HTTP/WebDAV only - no FTP/SFTP/TFTP/SMB flags anywhere in the
+        // config, and only the catalog port is published. G7: the bridge
+        // targets are fixed service names on the NOMAD network (DockerService
+        // attaches every managed container to it); nothing user-controlled is
+        // fetched server-side. The ConvertX hand-off additionally needs
+        // ConvertX running with ALLOW_UNAUTHENTICATED=true (the seeded
+        // ConvertX keeps accounts on; the flip is documented on the docs page).
+        Env: [
+          'PYTHONUNBUFFERED=1',
+          'STIRLING_URL=http://nomad_stirling_pdf:8080',
+          'CONVERTX_URL=http://nomad_convertx:3000',
+        ],
+      }),
+      ui_location: '8520',
+      installed: false,
+      installation_status: 'idle',
+      is_dependency_service: false,
+      is_custom: false,
+      category: 'utility',
+      depends_on: null,
+      metadata: JSON.stringify({ minMemoryMB: 256, minDiskMB: 1024 }),
     },
   ]
 
