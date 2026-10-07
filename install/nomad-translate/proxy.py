@@ -40,18 +40,40 @@ MAX_TRANSLATE_BYTES = int(os.environ.get("MAX_TRANSLATE_BYTES", str(4 * 1024 * 1
 
 COOKIE = "nomadlang"
 
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Hand upstream redirects back to the browser instead of following them.
+
+    Kiwix answers a book root such as /content/<book> with a 302 to the ZIM's
+    main page. Following it here would serve that page's HTML at the ORIGINAL
+    URL, so every relative link and stylesheet in it resolves one directory
+    too high: styling is lost and every article link 404s.
+    """
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+# urlopen() follows redirects by default; this opener raises them as HTTPError
+# so they are forwarded below like any other non-200 response.
+_opener = urllib.request.build_opener(_NoRedirect)
+
 # Display names for the languages Bergamot's tiny model set covers. A language
 # only appears in the control if its model is actually on disk.
 LANG_NAMES = {
-    "bg": "Bulgarian", "bn": "Bengali", "cs": "Czech", "da": "Danish",
+    "af": "Afrikaans", "ar": "Arabic", "bg": "Bulgarian", "bn": "Bengali",
+    "bs": "Bosnian", "ca": "Catalan", "cs": "Czech", "da": "Danish",
     "de": "German", "el": "Greek", "es": "Spanish", "et": "Estonian",
-    "fa": "Persian", "fi": "Finnish", "fr": "French", "he": "Hebrew",
-    "hi": "Hindi", "hu": "Hungarian", "id": "Indonesian", "is": "Icelandic",
-    "it": "Italian", "lt": "Lithuanian", "lv": "Latvian", "nb": "Norwegian",
-    "nl": "Dutch", "pl": "Polish", "pt": "Portuguese", "ro": "Romanian",
-    "ru": "Russian", "sk": "Slovak", "sl": "Slovenian", "sr": "Serbian",
-    "sv": "Swedish", "ta": "Tamil", "te": "Telugu", "tr": "Turkish",
-    "uk": "Ukrainian", "vi": "Vietnamese",
+    "eu": "Basque", "fa": "Persian", "fi": "Finnish", "fr": "French",
+    "gl": "Galician", "gu": "Gujarati", "he": "Hebrew", "hi": "Hindi",
+    "hr": "Croatian", "hu": "Hungarian", "id": "Indonesian", "is": "Icelandic",
+    "it": "Italian", "ja": "Japanese", "kn": "Kannada", "ko": "Korean",
+    "lt": "Lithuanian", "lv": "Latvian", "ml": "Malayalam", "mr": "Marathi",
+    "ms": "Malay", "nb": "Norwegian", "nl": "Dutch", "pl": "Polish",
+    "pt": "Portuguese", "ro": "Romanian", "ru": "Russian", "sk": "Slovak",
+    "sl": "Slovenian", "sr": "Serbian", "sv": "Swedish", "ta": "Tamil",
+    "te": "Telugu", "th": "Thai", "tr": "Turkish", "uk": "Ukrainian",
+    "ur": "Urdu", "vi": "Vietnamese",
 }
 
 # Hop-by-hop headers must not be forwarded. Content-Length and Content-Encoding
@@ -78,6 +100,9 @@ def available_languages() -> dict[str, str]:
 
 
 LANGS = available_languages()
+# Part of every translated page's ETag, so a cached page from before a language
+# was added can never revalidate as unchanged.
+LANGS_TAG = "".join(sorted(LANGS)) or "none"
 
 # Bergamot is imported lazily so the proxy can still boot, and still forward
 # Kiwix untouched, on a box where the models never downloaded.
@@ -226,12 +251,18 @@ class Handler(BaseHTTPRequestHandler):
         # HTML can be rewritten without decompressing first.
 
         try:
-            response = urllib.request.urlopen(request, timeout=120)
+            response = _opener.open(request, timeout=120)
             status, headers, data = response.status, response.headers, response.read()
         except urllib.error.HTTPError as exc:
             # Forwarded as-is, which is how Kiwix's own 404 and 400 pages keep
             # coming back byte for byte.
             status, headers, data = exc.code, exc.headers, exc.read()
+            # An absolute Location would point the browser at the upstream
+            # container name, which it cannot reach. Keep it on this origin.
+            location = headers.get("Location", "")
+            if location.startswith(UPSTREAM):
+                del headers["Location"]
+                headers["Location"] = location[len(UPSTREAM):] or "/"
         except Exception as exc:
             message = f"Translation proxy could not reach the library: {exc}".encode()
             self.send_response(502)
@@ -269,10 +300,17 @@ class Handler(BaseHTTPRequestHandler):
             # feature not working. The ETag is namespaced by language so
             # revalidation still works per language rather than being disabled.
             if translatable and key.lower() == "etag":
-                value = f'{value.rstrip()}-nomadlang-{lang or "orig"}'
+                value = f'{value.rstrip()}-nomadlang-{lang or "orig"}-{LANGS_TAG}'
+            # The page also carries the language bar, which changes whenever a
+            # language is added. Kiwix's max-age=3600 kept the old bar on screen
+            # for up to an hour, and a normal refresh does not reach the
+            # article frame. Revalidating every time is cheap on a local box.
+            if translatable and key.lower() == "cache-control":
+                continue
             self.send_header(key, value)
         if translatable:
             self.send_header("Vary", "Cookie")
+            self.send_header("Cache-Control", "no-cache")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         if not body_only:

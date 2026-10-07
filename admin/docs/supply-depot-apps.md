@@ -223,6 +223,20 @@ Your own media server. Point Jellyfin at a folder of movies, TV shows, music, an
 
 > **A note on playback performance:** Jellyfin plays most files effortlessly, but if a video's format isn't supported by your device, Jellyfin has to convert it on the fly ("transcoding"), which is heavy work for the processor. NOMAD doesn't set up graphics-card acceleration for this by default, so very large or high-resolution videos may stutter on a modest NOMAD. Playing files in a widely-supported format (like MP4/H.264) avoids transcoding and plays smoothest.
 
+## ConvertX {% #convertx %}
+
+A file converter that runs entirely on your NOMAD. Drop in a file, pick the format you want, and ConvertX converts it locally using the same trusted tools a professional would reach for (FFmpeg for video and audio, ImageMagick and libvips for images, LibreOffice and Pandoc for documents, Calibre for e-books). It handles over a thousand format pairs: PNG or JPEG to WebP for much smaller image files, DOCX to PDF, MOV to MP4, WAV to MP3, EPUB to MOBI, and many more. Several files can be converted in one batch.
+
+**Official site:** [github.com/C4illin/ConvertX](https://github.com/C4illin/ConvertX) · **Source:** same repository
+
+**First time you open it, you create the one account.** ConvertX requires a login, and on NOMAD new sign-ups are closed after the first account, so the very first visit shows a create-account page: make your account there with a real password and keep track of it. From then on the app opens to a sign-in page and nobody else can register. If you ever want a second account, flip `ACCOUNT_REGISTRATION` to `true` via Manage > Edit on the app in the Command Center, let the person register, then flip it back to `false`.
+
+**Using it:** Sign in, drag one or more files onto the page (or click to browse), choose the target format from the dropdown, and convert. When it finishes you get a download link for each converted file. The **History** page lists your past conversions while their files are still on the box.
+
+**Your data:** Uploads and converted files live in `storage/convertx`. ConvertX automatically deletes files older than 24 hours, so it is a workshop, not a filing cabinet: download anything you want to keep and store it properly, for example in your media folder via File Browser. Your account and settings also live in `storage/convertx`.
+
+**Works offline:** Fully. Every converter is bundled inside the app on your NOMAD and the whole job happens on the box's own processor. Nothing is uploaded to any outside service, which is the reason to run a converter on NOMAD instead of using an online one. Two things follow: big video jobs can take a while on a modest box, and the size of file you can convert is limited by free disk space, since there is no fixed upload limit in this version.
+
 ## Meshtastic Web {% #meshtastic-web %}
 
 A browser-based control panel for [Meshtastic](https://meshtastic.org) devices. Meshtastic is off-grid, long-range radio messaging: small, inexpensive LoRa radios that form their own mesh network and send text messages and GPS locations for miles with no cell service, no internet, and no fees. This app is how you configure those radios and read and send messages from a full-size screen.
@@ -289,7 +303,69 @@ Reads the Information Library in another language. Open an article and a **Trans
 
 **Why this instead of the AI Assistant:** the AI Assistant can translate, but this is roughly 1,600 times faster on the same machine, and it does not need a graphics card, so it works on every NOMAD. It is also more careful with names: asked to translate a page, the AI Assistant will happily translate "Project NOMAD" into another language, and this will not.
 
-**Choosing languages:** French, Spanish and German are set up by default. To change that, use **Manage > Edit** and set `TRANSLATE_LANGS` to a comma-separated list of language codes, for example `fr,it,pt`. Each language is about 74 MB, and new ones download the next time the app restarts. Around 40 languages are available, including Hindi, Bengali, Tamil, Telugu, Vietnamese and Indonesian. **Chinese, Japanese, Korean, Arabic and Thai are not available**, because no compact model exists for them yet.
+**Choosing languages:** French, Spanish and German are set up by default. To add or remove languages:
+
+1. In the **Supply Depot**, open the Translated Library's **Manage** menu and choose **Edit**.
+2. Under **Environment Variables**, find `TRANSLATE_LANGS=fr,es,de`.
+3. Change the list of language codes, separated by commas. For example, `TRANSLATE_LANGS=fr,es,de,sv` adds Swedish.
+4. Click **Save**. The app restarts, downloads any new languages, and adds a button for each one to the **Translate this page** bar.
+
+Adding a language needs an internet connection, and each one takes between about 45 MB and 140 MB of disk. Languages you already have keep working offline. Removing a code from the list does not remove a language you have already downloaded; it stays in `storage/translate/models` and keeps its button.
+
+These 50 languages are available. Chinese is not available yet.
+
+| Language | Code |
+|---|---|
+| Afrikaans | `af` |
+| Arabic | `ar` |
+| Basque | `eu` |
+| Bengali | `bn` |
+| Bosnian | `bs` |
+| Bulgarian | `bg` |
+| Catalan | `ca` |
+| Croatian | `hr` |
+| Czech | `cs` |
+| Danish | `da` |
+| Dutch | `nl` |
+| Estonian | `et` |
+| Finnish | `fi` |
+| French | `fr` |
+| Galician | `gl` |
+| German | `de` |
+| Greek | `el` |
+| Gujarati | `gu` |
+| Hebrew | `he` |
+| Hindi | `hi` |
+| Hungarian | `hu` |
+| Icelandic | `is` |
+| Indonesian | `id` |
+| Italian | `it` |
+| Japanese | `ja` |
+| Kannada | `kn` |
+| Korean | `ko` |
+| Latvian | `lv` |
+| Lithuanian | `lt` |
+| Malay | `ms` |
+| Malayalam | `ml` |
+| Marathi | `mr` |
+| Norwegian | `nb` |
+| Persian | `fa` |
+| Polish | `pl` |
+| Portuguese | `pt` |
+| Romanian | `ro` |
+| Russian | `ru` |
+| Serbian | `sr` |
+| Slovak | `sk` |
+| Slovenian | `sl` |
+| Spanish | `es` |
+| Swedish | `sv` |
+| Tamil | `ta` |
+| Telugu | `te` |
+| Thai | `th` |
+| Turkish | `tr` |
+| Ukrainian | `uk` |
+| Urdu | `ur` |
+| Vietnamese | `vi` |
 
 **First start needs internet.** The language models download when the app first runs, the same as installing any other app. After that it is entirely offline. If you install this while disconnected the app still starts and the library still works, just without translation until it can fetch the models.
 

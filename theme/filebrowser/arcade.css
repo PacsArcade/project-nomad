@@ -1,0 +1,551 @@
+/*
+ * arcade.css, the WanderPac arcade theme for File Browser.
+ *
+ * What this is: a drop-in dark theme for File Browser, verified against
+ * image docker.io/filebrowser/filebrowser:v2.63.23 (digest
+ * sha256:a469ea076d4a1b4b1d86a41d130f2f536cd9da996a2b1fb39c0d7635f9d89b9a,
+ * the latest v2.x release as of 2026-10-06). Dark glass surfaces lit by
+ * ember, crisp pixel-cut edges, and a block motif: panels as blocks,
+ * progress as stacked blocks, tiles that snap to an 8 px grid. Dark only.
+ * There is no light theme, ever; this file renders the arcade dark look
+ * whether File Browser's own theme switch sits on dark or light.
+ *
+ * Where it goes (File Browser's documented Branding hook, unchanged in
+ * v2.63.23 per http/static.go and docs/customization.md):
+ *   1. Put this file in a directory on the box, for example
+ *      storage/filebrowser/branding/custom.css, and bind-mount that
+ *      directory into the container, for example
+ *      ${STORAGE}/filebrowser/branding:/branding.
+ *   2. Point File Browser at it once: Settings > Global Settings >
+ *      Branding > Branding files = /branding, Save. The setting lives in
+ *      File Browser's own database (/db/.filebrowser.db), so it survives
+ *      container recreates; the file lives in storage, so it survives
+ *      image updates. It can also be set headless with
+ *      `filebrowser config set --branding.files /branding -d /db/.filebrowser.db`.
+ *   3. When File Browser sees <branding dir>/custom.css it serves it and
+ *      injects the link into every page, including the login screen.
+ *      File Browser's own brand mark stays stock.
+ *
+ * How to recolor: edit the variables in the ONE customization point block
+ * below, between the BEGIN and END fences. Every rule in this file reads
+ * those variables; nothing below the fence invents a new palette value
+ * (the only literals below are rgba alphas derived from the fenced colors,
+ * same as the Stirling pilot). Change the ember variables to change the
+ * accent, the ground variables to change the darks. Keep the grounds dark
+ * enough that bone text holds 4.5:1 contrast (the measured values are
+ * noted next to each text color).
+ *
+ * Values come from the WanderPac arcade tokens (theme/arcade-tokens.css in
+ * PacsArcade/wanderpac, lane T-572). The variables block below carries
+ * every one of the 55 tokens, names and values identical, verified by the
+ * parity check reported in the lane summary (outbox/task-574/SUMMARY.md).
+ *
+ * License: Apache License 2.0, the same license as the NOMAD
+ * project-nomad repository this file ships with.
+ */
+
+/* ======================= BEGIN customization point ===================== */
+/* The ONE place colors change. One variable per line, plain words. */
+:root {
+  /* The darks. ground is the page itself. raised and overlay are panels
+     sitting on it, each one step lighter, like blocks stacked on a table.
+     well sinks below the ground for inputs and video wells. */
+  --arcade-ground: #0A0907;
+  --arcade-ground-raised: #17130D;
+  --arcade-ground-overlay: #1E1911;
+  --arcade-well: #060403;
+
+  /* Lines. line is the default border, line-strong when an edge needs to
+     read one step louder. */
+  --arcade-line: #332C22;
+  --arcade-line-strong: #4A4133;
+
+  /* Text. bone is reading text, 16.4 to 1 on ground. muted is captions
+     and placeholders, 7.8 to 1 on ground. Both clear the 4.5 to 1 house
+     floor with room. Anything dimmer than muted is decoration, never
+     words. */
+  --arcade-bone: #EDE9E0;
+  --arcade-muted: #A8A296;
+
+  /* Ember, the one orange. The arcade's light: accents, glows, active
+     states. Never a panel fill, never a big area. ember-bright is hover
+     and glow peak, ember-dim is pressed state and ember borders on dark
+     glass. Ember text on ground is 6.7 to 1, so a short label may be
+     ember; long reading text stays bone. */
+  --arcade-ember: #FF6400;
+  --arcade-ember-bright: #FF8A3D;
+  --arcade-ember-dim: #C24E00;
+  --arcade-ember-glow: rgba(255, 100, 0, 0.35);
+
+  /* State colors. green is online, done, healthy. danger is the two-step
+     delete and errors. A state always gets words or an icon as well;
+     color is never the only signal. */
+  --arcade-green: #79D2A6;
+  --arcade-danger: #E08070;
+
+  /* Glass. A dark panel you can almost see through: the ground behind it
+     blurred, a hairline of bone light on its edge, a soft shadow below,
+     and a thin top highlight like light catching a block's rim. */
+  --arcade-glass-bg: rgba(23, 19, 13, 0.72);
+  --arcade-glass-bg-strong: rgba(23, 19, 13, 0.88);
+  --arcade-glass-blur: 14px;
+  --arcade-glass-blur-strong: 22px;
+  --arcade-glass-border: rgba(237, 233, 224, 0.10);
+  --arcade-glass-border-ember: rgba(255, 100, 0, 0.45);
+  --arcade-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.50);
+  --arcade-glass-highlight: inset 0 1px 0 rgba(237, 233, 224, 0.08);
+
+  /* The digital edge. Panels, tiles, dividers and meters do not round
+     off. Their corners are cut square, one clean pixel step, and a strong
+     edge can step out a second ring like a sprite border. cut is the size
+     of one corner step. Use the clip tokens as clip-path values. */
+  --arcade-cut: 8px;
+  --arcade-cut-sm: 4px;
+  --arcade-edge-step: 2px;
+  --arcade-clip-panel: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+  --arcade-clip-chip: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px);
+
+  /* The block. Everything snaps to it. block is the one unit; spacing,
+     tile sizes and meter segments are whole blocks. stack-gap is the
+     crack between two blocks in a stack, small enough that the stack
+     still reads as one thing made of pieces. */
+  --arcade-block: 8px;
+  --arcade-block-stack-gap: 2px;
+  --arcade-block-meter-seg: 12px;
+
+  /* Spacing, in whole blocks. */
+  --arcade-space-1: 8px;
+  --arcade-space-2: 16px;
+  --arcade-space-3: 24px;
+  --arcade-space-4: 32px;
+  --arcade-space-6: 48px;
+  --arcade-space-8: 64px;
+
+  /* Radii. Buttons stay round, standing law. Panels, tiles and meters do
+     not round: they are blocks, and their corners are cut, not curved. */
+  --arcade-radius-button: 999px;
+  --arcade-radius-soft: 10px;
+  --arcade-radius-none: 0px;
+
+  /* Type. The display face is the pixel voice for headers and the box
+     name; it falls back to mono until a bundled face lands. body is
+     reading text, no serifs anywhere. mono is numbers, the block clock
+     and code. */
+  --arcade-font-display: "Silkscreen", "Courier New", monospace;
+  --arcade-font-body: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --arcade-font-mono: ui-monospace, "Cascadia Mono", "Courier New", monospace;
+  --arcade-text-xs: 11px;
+  --arcade-text-sm: 13px;
+  --arcade-text-base: 15px;
+  --arcade-text-lg: 18px;
+  --arcade-text-xl: 24px;
+  --arcade-text-display: 32px;
+  --arcade-line-height-body: 1.5;
+  --arcade-line-height-title: 1.2;
+  --arcade-weight-regular: 400;
+  --arcade-weight-bold: 700;
+
+  /* Focus. A keyboard focus ring is an ember ring with a dark gap, so it
+     reads on every ground. */
+  --arcade-focus-ring: 0 0 0 2px #0A0907, 0 0 0 4px #FF6400;
+
+  /* Motion. A tile snapping into place is quick and a little stepped,
+     like a block landing. Nothing bounces. */
+  --arcade-motion-snap: 120ms;
+  --arcade-motion-ease: cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+/* ======================== END customization point ====================== */
+
+
+/* ---------------------------------------------------------------------- */
+/* Mapping A: File Browser's own variable vocabulary reads the arcade      */
+/* values. File Browser sets its scheme as a class on <html> (dark or      */
+/* light, picked from the OS or the user setting). Both blocks carry the   */
+/* same arcade darks: there is no light theme, ever. File Browser's names  */
+/* are kept as-is so every upstream component follows without touching its  */
+/* rules. Note its odd naming: textPrimary is the dimmer text,             */
+/* textSecondary the brighter reading text.                                */
+/* ---------------------------------------------------------------------- */
+
+:root,
+:root.dark {
+  /* The one accent. File Browser's blue is the action color: buttons,
+     selected rows, the multiple-selection bar. It becomes ember. */
+  --blue: var(--arcade-ember);
+  --dark-blue: var(--arcade-ember-bright);
+
+  /* Danger stays the state color and always gets words too. */
+  --red: var(--arcade-danger);
+  --dark-red: var(--arcade-ember-dim);
+
+  /* Validation tints on inputs, translucent state washes on the darks. */
+  --input-red: rgba(224, 128, 112, 0.18);
+  --input-green: rgba(121, 210, 166, 0.18);
+
+  /* The darks. background is the page, surfacePrimary the panels,
+     surfaceSecondary raised controls like the search field. */
+  --background: var(--arcade-ground);
+  --surfacePrimary: var(--arcade-ground-raised);
+  --surfaceSecondary: var(--arcade-ground-overlay);
+
+  /* Text. File Browser's textPrimary is captions and labels, so it takes
+     muted; textSecondary is reading text, so it takes bone. */
+  --textPrimary: var(--arcade-muted);
+  --textSecondary: var(--arcade-bone);
+
+  /* Icons. Primary icons read bone on the darks; tertiary (sort header
+     carets, disabled glyphs) take muted. */
+  --iconPrimary: var(--arcade-bone);
+  --iconSecondary: var(--arcade-bone);
+  --iconTertiary: var(--arcade-muted);
+
+  /* Header action glyphs. */
+  --action: var(--arcade-bone);
+
+  /* Lines, hovers and dividers. */
+  --hover: rgba(237, 233, 224, 0.08);
+  --divider: var(--arcade-glass-border);
+  --borderPrimary: var(--arcade-line);
+  --borderSecondary: var(--arcade-line-strong);
+  --dividerPrimary: var(--arcade-glass-bg);
+  --dividerSecondary: var(--arcade-glass-bg-strong);
+
+  /* Selected file rows fill ember; their text is forced to ground by a
+     rule below (ember with bone text would be 2.5:1, under the floor). */
+  --item-selected: var(--arcade-ground);
+}
+
+
+/* ---------------------------------------------------------------------- */
+/* Surfaces: dark glass on the cards, the header bar and the floating      */
+/* panels, with the pixel-cut block edge.                                  */
+/* ---------------------------------------------------------------------- */
+
+body {
+  background-color: var(--arcade-ground);
+  color: var(--arcade-bone);
+}
+
+/* Cards are blocks: glass, cut corners, the rim highlight and the soft
+   shadow. Covers settings cards, dialogs (.card.floating) and the upload
+   tray. */
+.card {
+  background: var(--arcade-glass-bg);
+  backdrop-filter: blur(var(--arcade-glass-blur));
+  -webkit-backdrop-filter: blur(var(--arcade-glass-blur));
+  border: 1px solid var(--arcade-glass-border);
+  border-radius: var(--arcade-radius-none);
+  clip-path: var(--arcade-clip-panel);
+  box-shadow: var(--arcade-glass-shadow), var(--arcade-glass-highlight);
+}
+
+.card.floating {
+  background: var(--arcade-glass-bg-strong);
+  backdrop-filter: blur(var(--arcade-glass-blur-strong));
+  -webkit-backdrop-filter: blur(var(--arcade-glass-blur-strong));
+}
+
+/* The header bar: a glass rail on the ground, hairline below. */
+#header {
+  background: var(--arcade-glass-bg-strong);
+  backdrop-filter: blur(var(--arcade-glass-blur));
+  -webkit-backdrop-filter: blur(var(--arcade-glass-blur));
+  border-bottom: 1px solid var(--arcade-glass-border);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* The search field sits in the well and its results pane is glass. */
+#search #input {
+  background: var(--arcade-well);
+  border-radius: var(--arcade-radius-none);
+  clip-path: var(--arcade-clip-chip);
+}
+
+#search.active #input,
+#search .boxes {
+  background: var(--arcade-glass-bg-strong);
+  border-color: var(--arcade-glass-border);
+}
+
+/* Search suggestion tiles become glass blocks with an ember hover,
+   instead of solid blue slabs. */
+#search .boxes > div > div {
+  background: var(--arcade-ground-overlay);
+  border: 1px solid var(--arcade-glass-border);
+  border-radius: var(--arcade-radius-none);
+  clip-path: var(--arcade-clip-chip);
+  color: var(--arcade-bone);
+  transition: border-color var(--arcade-motion-snap) var(--arcade-motion-ease);
+}
+
+#search .boxes > div > div:hover {
+  border-color: var(--arcade-glass-border-ember);
+}
+
+
+/* ---------------------------------------------------------------------- */
+/* The listing: rows and mosaic tiles are blocks on the glass.             */
+/* ---------------------------------------------------------------------- */
+
+#listing .item {
+  color: var(--arcade-muted);
+  transition: background-color var(--arcade-motion-snap) var(--arcade-motion-ease);
+}
+
+#listing .item:hover {
+  background-color: var(--arcade-ground-overlay);
+}
+
+#listing .item .name {
+  color: var(--arcade-bone);
+}
+
+/* Mosaic tiles are blocks: cut corners, glass, snap-fast hover. */
+#listing.mosaic .item {
+  background: var(--arcade-glass-bg);
+  backdrop-filter: blur(var(--arcade-glass-blur));
+  -webkit-backdrop-filter: blur(var(--arcade-glass-blur));
+  border: 1px solid var(--arcade-glass-border);
+  border-radius: var(--arcade-radius-none);
+  clip-path: var(--arcade-clip-panel);
+  box-shadow: var(--arcade-glass-highlight);
+}
+
+#listing.mosaic .item:hover {
+  border-color: var(--arcade-glass-border-ember);
+  box-shadow: var(--arcade-glass-highlight);
+}
+
+/* A selected row or tile fills ember, the arcade's active state. Text on
+   it flips to ground so the pair holds 6.7:1, and the tile loses its
+   glass so the fill reads solid. */
+#listing .item[aria-selected="true"] {
+  color: var(--arcade-ground) !important;
+  background: var(--arcade-ember) !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+#listing .item[aria-selected="true"] .name,
+#listing .item[aria-selected="true"] i {
+  color: var(--arcade-ground) !important;
+}
+
+/* The multiple-selection bar is the ember action bar, text on ground. */
+#listing #multiple-selection {
+  background-color: var(--arcade-ember);
+}
+
+#listing #multiple-selection p,
+#listing #multiple-selection i {
+  color: var(--arcade-ground);
+}
+
+/* The list header row stays ground with a line under it. */
+#listing.list .item.header {
+  background: var(--arcade-ground);
+  border-bottom: 1px solid var(--arcade-line);
+}
+
+
+/* ---------------------------------------------------------------------- */
+/* Buttons stay round. Standing house law, and it wins over the digital    */
+/* edge for buttons only. Solid actions are ember with ground text         */
+/* (6.7:1); flat actions read ember-bright on the darks.                   */
+/* ---------------------------------------------------------------------- */
+
+.button {
+  border-radius: var(--arcade-radius-button);
+  border: 1px solid var(--arcade-glass-border-ember);
+  color: var(--arcade-ground);
+  font-weight: var(--arcade-weight-bold);
+  box-shadow: 0 0 12px var(--arcade-ember-glow);
+  transition: background-color var(--arcade-motion-snap) var(--arcade-motion-ease),
+    box-shadow var(--arcade-motion-snap) var(--arcade-motion-ease);
+}
+
+.button:hover {
+  background-color: var(--arcade-ember-bright);
+  box-shadow: 0 0 18px var(--arcade-ember-glow);
+}
+
+.button:active {
+  background-color: var(--arcade-ember-dim);
+}
+
+.button--flat {
+  color: var(--arcade-ember-bright);
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.button--flat:hover {
+  background: var(--arcade-ground-overlay);
+}
+
+.button--flat.button--grey {
+  color: var(--arcade-muted);
+}
+
+.button--flat.button--red,
+.button--red {
+  color: var(--arcade-danger);
+}
+
+.button--red:not(.button--flat) {
+  background: transparent;
+  border: 1px solid var(--arcade-danger);
+  box-shadow: none;
+}
+
+.button--red:not(.button--flat):hover {
+  background: rgba(224, 128, 112, 0.15);
+}
+
+
+/* ---------------------------------------------------------------------- */
+/* Inputs sit in the well, focus gets the ember ring with the dark gap.    */
+/* ---------------------------------------------------------------------- */
+
+.input,
+.input input,
+.input textarea,
+select.input {
+  background: var(--arcade-well);
+  border: 1px solid var(--arcade-line);
+  border-radius: var(--arcade-radius-none);
+  color: var(--arcade-bone);
+}
+
+.input:focus-within,
+.input input:focus,
+.input textarea:focus {
+  border-color: var(--arcade-ember-dim);
+}
+
+*:focus-visible {
+  box-shadow: var(--arcade-focus-ring);
+  outline: none;
+}
+
+::selection {
+  background: var(--arcade-ember-dim);
+  color: var(--arcade-bone);
+}
+
+
+/* ---------------------------------------------------------------------- */
+/* The login screen: the one page every visitor sees. A glass block on    */
+/* the ground, the wordmark left stock, the title in the display face.     */
+/* The custom stylesheet is injected into the page shell, so the login    */
+/* screen takes it before any session exists (verified in the proof run).  */
+/* ---------------------------------------------------------------------- */
+
+#login {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(255, 100, 0, 0.07), transparent 60%),
+    var(--arcade-ground);
+}
+
+#login form {
+  background: var(--arcade-glass-bg);
+  backdrop-filter: blur(var(--arcade-glass-blur-strong));
+  -webkit-backdrop-filter: blur(var(--arcade-glass-blur-strong));
+  border: 1px solid var(--arcade-glass-border);
+  border-radius: var(--arcade-radius-none);
+  clip-path: var(--arcade-clip-panel);
+  box-shadow: var(--arcade-glass-shadow), var(--arcade-glass-highlight);
+  padding: var(--arcade-space-3);
+  max-width: 19em;
+}
+
+#login h1 {
+  font-family: var(--arcade-font-display);
+  font-weight: var(--arcade-weight-regular);
+  letter-spacing: 0.04em;
+  color: var(--arcade-bone);
+}
+
+/* The login links (switch language, forgot password) read ember-bright. */
+#login p {
+  color: var(--arcade-ember-bright);
+}
+
+/* Wrong-password and logout banners are state words on state washes. */
+#login .wrong {
+  background: rgba(224, 128, 112, 0.15);
+  color: var(--arcade-danger);
+  border: 1px solid var(--arcade-danger);
+}
+
+#login .logout-message {
+  background: rgba(255, 100, 0, 0.12);
+  color: var(--arcade-ember-bright);
+  border: 1px solid var(--arcade-ember-dim);
+}
+
+
+/* ---------------------------------------------------------------------- */
+/* Progress is stacked blocks: a segment mask cuts each bar into blocks    */
+/* with a stack-gap crack between them. Covers the upload tray meters.     */
+/* ---------------------------------------------------------------------- */
+
+.upload-files .file .file-progress {
+  background: var(--arcade-well);
+  border-radius: var(--arcade-radius-none);
+}
+
+.upload-files .file .file-progress div {
+  background-color: var(--arcade-ember);
+  border-radius: var(--arcade-radius-none);
+  mask-image: repeating-linear-gradient(90deg, #000 0 var(--arcade-block-meter-seg), transparent var(--arcade-block-meter-seg) calc(var(--arcade-block-meter-seg) + var(--arcade-block-stack-gap)));
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 var(--arcade-block-meter-seg), transparent var(--arcade-block-meter-seg) calc(var(--arcade-block-meter-seg) + var(--arcade-block-stack-gap)));
+}
+
+/* The top loading bar and the sidebar disk-usage meter join the ember.
+   The usage meter is a vue-simple-progress with hardcoded inline colors
+   (#2196f3 on #eee), so only !important reaches it. */
+.progress div {
+  background-color: var(--arcade-ember);
+}
+
+.vue-simple-progress {
+  background: var(--arcade-well) !important;
+}
+
+.vue-simple-progress-bar {
+  background: var(--arcade-ember) !important;
+  mask-image: repeating-linear-gradient(90deg, #000 0 var(--arcade-block-meter-seg), transparent var(--arcade-block-meter-seg) calc(var(--arcade-block-meter-seg) + var(--arcade-block-stack-gap)));
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 var(--arcade-block-meter-seg), transparent var(--arcade-block-meter-seg) calc(var(--arcade-block-meter-seg) + var(--arcade-block-stack-gap)));
+}
+
+/* The shell (terminal) pane is a well block. */
+#shell {
+  background: var(--arcade-well);
+  border-radius: var(--arcade-radius-none);
+  border: 1px solid var(--arcade-line);
+  font-family: var(--arcade-font-mono);
+}
+
+
+/* ---------------------------------------------------------------------- */
+/* Scrollbars join the darks: a line-colored thumb on the ground track.    */
+/* ---------------------------------------------------------------------- */
+
+::-webkit-scrollbar {
+  width: var(--arcade-space-1);
+  height: var(--arcade-space-1);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--arcade-ground);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--arcade-line);
+  border-radius: var(--arcade-radius-none);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--arcade-line-strong);
+}

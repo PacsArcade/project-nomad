@@ -45,11 +45,11 @@ import { OllamaService } from './ollama_service.js'
 import { SERVICE_NAMES } from '../../constants/service_names.js'
 import { removeStopwords } from 'stopword'
 import { randomUUID } from 'node:crypto'
-import { join, resolve, sep } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import KVStore from '#models/kv_store'
 import KbIngestState from '#models/kb_ingest_state'
 import { decideScanAction, type IngestPolicy } from '../utils/kb_ingest_decision.js'
-import { decideOrphans, filterOrphanCandidates } from '../utils/kb_orphan_decision.js'
+import { decideOrphans } from '../utils/kb_orphan_decision.js'
 import { decideContentReindex, type ReindexOutcome } from '../utils/content_reindex_decision.js'
 import KbRatioRegistry from '#models/kb_ratio_registry'
 import { decideWarnings } from '../utils/kb_warning_decision.js'
@@ -486,10 +486,7 @@ export class RagService {
       // (retries, force re-embeds, replaced-content reindexing, etc.) instead of
       // resetting it to active on every write. A genuinely new file (no row yet)
       // still defaults to active.
-      const existingIngestState = await KbIngestState.query()
-        .where('file_path', sanitizedSource)
-        .first()
-      const active = existingIngestState ? existingIngestState.active : true
+      const active = await this._readActiveFlag(sanitizedSource)
 
       const points = chunks.map((chunkText, index) => {
         // Sanitize text to prevent JSON encoding errors
@@ -534,6 +531,19 @@ export class RagService {
       })
 
       await this.qdrant!.upsert(RagService.CONTENT_COLLECTION_NAME, { points })
+
+      // A toggle can land between the read above and the upsert, and its
+      // setPayload then misses these points. The toggles write the row before
+      // Qdrant, so re-reading after the upsert closes the gap: either this read
+      // sees the new value, or the toggle's setPayload runs after the upsert and
+      // covers these points itself.
+      const currentActive = await this._readActiveFlag(sanitizedSource)
+      if (currentActive !== active) {
+        await this.qdrant!.setPayload(RagService.CONTENT_COLLECTION_NAME, {
+          payload: { active: currentActive },
+          points: points.map((p) => p.id),
+        })
+      }
 
       logger.debug(`[RAG] Successfully embedded and stored ${chunks.length} chunks`)
       logger.debug(`[RAG] First chunk preview: "${chunks[0].substring(0, 100)}..."`)
@@ -1506,12 +1516,15 @@ export class RagService {
   }
 
   /**
-   * Toggle a file's active (searchable) state. Updates the `active` payload
-   * field on every existing Qdrant point for this source in place — no
-   * deletion or re-embedding, so this is instant in either direction — then
-   * mirrors the change onto the KbIngestState row so getStoredFiles() reflects
-   * it immediately. Vectors stay in Qdrant permanently either way; only
+   * Toggle a file's active (searchable) state. Writes the KbIngestState row,
+   * then updates the `active` payload field on every existing Qdrant point for
+   * this source in place — no deletion or re-embedding, so this is instant in
+   * either direction. Vectors stay in Qdrant permanently either way; only
    * `searchSimilarDocuments()`'s query-time filter is affected. See #1119.
+   *
+   * The row goes first so an in-flight embedAndStoreText() call always ends up
+   * with the right value: its post-upsert re-read either sees this write, or
+   * the setPayload below runs after its upsert and covers the new points.
    */
   public async setFileActive(
     source: string,
@@ -1523,15 +1536,44 @@ export class RagService {
         RagService.EMBEDDING_DIMENSION
       )
 
-      await this.qdrant!.setPayload(RagService.CONTENT_COLLECTION_NAME, {
-        payload: { active },
-        filter: { must: [{ key: 'source', match: { value: source } }] },
-      })
+      // A source can have chunks in Qdrant but no state row: a ZIM mid-ingestion
+      // (markIndexed only runs after the final batch), a pre-RFC install, or a
+      // lost row. getStoredFiles() reports such a file as active, so skipping the
+      // write here left the switch stuck on while every point went inactive, and
+      // the user had no way to turn it back on. Create the row the same way the
+      // scanner backfills it: `indexed` when chunks exist, so the file doesn't
+      // regress to pending_decision and get re-dispatched.
+      let row = await KbIngestState.query().where('file_path', source).first()
+      const previousActive = row ? Boolean(row.active) : true
+      if (!row) {
+        const { count } = await this.qdrant!.count(RagService.CONTENT_COLLECTION_NAME, {
+          filter: { must: [{ key: 'source', match: { value: source } }] },
+          exact: false,
+        })
+        row = await KbIngestState.firstOrCreate(
+          { file_path: source },
+          {
+            file_path: source,
+            state: count > 0 ? 'indexed' : 'pending_decision',
+            chunks_embedded: 0,
+            collection: null,
+            active,
+          }
+        )
+      }
+      row.active = active
+      await row.save()
 
-      const row = await KbIngestState.query().where('file_path', source).first()
-      if (row) {
-        row.active = active
+      try {
+        await this.qdrant!.setPayload(RagService.CONTENT_COLLECTION_NAME, {
+          payload: { active },
+          filter: { must: [{ key: 'source', match: { value: source } }] },
+        })
+      } catch (error) {
+        // Put the row back so the panel keeps showing what retrieval does.
+        row.active = previousActive
         await row.save()
+        throw error
       }
 
       return { success: true, message: active ? 'File is now active.' : 'File is now inactive.' }
@@ -1539,6 +1581,16 @@ export class RagService {
       logger.error('[RAG] Error updating file active state:', error)
       return { success: false, message: 'Error updating file active state.' }
     }
+  }
+
+  /**
+   * A source's active flag as a real boolean. MySQL returns tinyint(1) as 0/1,
+   * and a raw 0 stamped into a Qdrant payload slips past the
+   * `must_not: active == false` search filter. A source with no row is active.
+   */
+  private async _readActiveFlag(source: string): Promise<boolean> {
+    const row = await KbIngestState.query().where('file_path', source).first()
+    return row ? Boolean(row.active) : true
   }
 
   /**
@@ -1569,20 +1621,31 @@ export class RagService {
           ? KbIngestState.query().whereNull('collection')
           : KbIngestState.query().where('collection', collection)
 
-      const countRow = await collectionQuery().where('active', !active).count('* as total').first()
-      const affectedCount = Number((countRow as any)?.$extras?.total ?? 0)
-
       const collectionFilterClause =
         collection === null
           ? { is_empty: { key: 'collection' } }
           : { key: 'collection', match: { value: collection } }
 
-      await this.qdrant!.setPayload(RagService.CONTENT_COLLECTION_NAME, {
-        payload: { active },
-        filter: { must: [collectionFilterClause] },
-      })
-
+      // Rows before Qdrant, for the same reason as setFileActive(). Only rows
+      // that change are touched, so a failed setPayload can restore exactly
+      // those without flipping files that already held the target value.
+      const changedPaths = (
+        await collectionQuery().where('active', !active).select('file_path')
+      ).map((r) => r.file_path)
+      const affectedCount = changedPaths.length
       await collectionQuery().update({ active })
+
+      try {
+        await this.qdrant!.setPayload(RagService.CONTENT_COLLECTION_NAME, {
+          payload: { active },
+          filter: { must: [collectionFilterClause] },
+        })
+      } catch (error) {
+        if (changedPaths.length > 0) {
+          await KbIngestState.query().whereIn('file_path', changedPaths).update({ active: !active })
+        }
+        throw error
+      }
 
       const label = collection ?? 'Uncategorized'
       const verb = active ? 'Turned on' : 'Turned off'
@@ -2302,9 +2365,11 @@ export class RagService {
    * install legitimately has no kb_uploads until the first upload. That makes
    * an absent root indistinguishable from a present-but-empty one by looking
    * at the file list alone — and the orphan sweep in scanAndSyncStorage()
-   * cannot afford to confuse the two. "This root scanned clean and had no
-   * files" means everything indexed under it is an orphan; "this root wasn't
-   * there" means we know nothing about it and must not touch it.
+   * cannot afford to confuse the two. "This root wasn't there" means we know
+   * nothing about it and must not touch it. A root that was there but empty
+   * is not much better evidence: boot creates the zim directory, so an
+   * unmounted volume shows up as an empty one (#1378). decideOrphans()
+   * therefore also refuses to purge under a walked root with no files.
    *
    * That distinction is the whole reason this variant exists. If the zim root
    * is missing, renamed, or not yet mounted (see #1050 — relocating the data
@@ -2593,24 +2658,29 @@ export class RagService {
       // leftover from ZimService.delete() (which never touched Qdrant) or
       // from reconcileReplacedContentFile's qdrant_not_running no-op. Running
       // this in sync (rather than only in the delete path) also self-heals
-      // installs already in this state. decideOrphans no-ops when
-      // embeddableFiles came back empty, so a filesystem hiccup can't be
-      // misread as "every file was deleted."
+      // installs already in this state.
       //
-      // Allowlisted (via filterOrphanCandidates) to `scannedRoots` — the roots
-      // the scan above actually walked, not the roots it meant to walk. Two
-      // separate things are excluded by that one rule. Nomad's own bundled
-      // docs (README.md + docs/) are embedded by discoverNomadDocs() from
-      // outside these roots, so they're left alone without being named here.
-      // And a root that wasn't present at scan time contributes no candidates
-      // at all, because a missing root is skipped rather than fatal: without
-      // this, a relocated or unmounted zim directory (#1050) would leave the
-      // scan non-empty via kb_uploads, sail past decideOrphans' empty-scan
-      // guard, and purge every ZIM in the index in a single batch.
-      const orphanCandidates = filterOrphanCandidates([...sourcesInQdrant], scannedRoots)
-      const orphans = decideOrphans(orphanCandidates, embeddableFiles)
+      // Confined to `scannedRoots`, the roots the scan above actually walked,
+      // not the roots it meant to walk. Nomad's own bundled docs (README.md +
+      // docs/) live outside these roots, so they're left alone without being
+      // named here, and a root missing at scan time contributes nothing
+      // (#1050). Within each walked root, decideOrphans also withholds the
+      // purge when the root holds no embeddable files (an unmounted volume
+      // leaves an empty mountpoint behind, #1378) or when it would remove most
+      // of the root at once. Withheld roots are reported back to the operator
+      // rather than silently skipped.
+      const { orphans, withheld } = decideOrphans(
+        [...sourcesInQdrant],
+        embeddableFiles,
+        scannedRoots
+      )
+      for (const w of withheld) {
+        logger.warn(
+          `[RAG] Withheld purge of ${w.count} indexed source(s) under ${w.root} (${w.reason}); the directory may be unmounted or pointing at the wrong location`
+        )
+      }
       let orphansPurged = 0
-      if (orphans && orphans.length > 0) {
+      if (orphans.length > 0) {
         logger.info(
           `[RAG] Found ${orphans.length} orphaned source(s) with no corresponding file on disk`
         )
@@ -2683,10 +2753,20 @@ export class RagService {
         `[RAG] Scan results (policy=${policy}): ${filesToEmbed.length} to embed, ${backfilled} backfilled, ${createdRows} new pending, ${createdPending} waiting on user, ${skipped} skipped`
       )
 
+      const withheldNote = withheld
+        .map(
+          (w) =>
+            `; left ${w.count} indexed source${w.count !== 1 ? 's' : ''} under ${relative(process.cwd(), w.root)} untouched because ${
+              w.reason === 'empty_root'
+                ? 'that folder has no files (is the drive mounted?)'
+                : 'removing them would clear most of that folder (is it pointing at the right drive?)'
+            }`
+        )
+        .join('')
       const orphanNote =
-        orphansPurged > 0
+        (orphansPurged > 0
           ? `; purged ${orphansPurged} orphaned source${orphansPurged !== 1 ? 's' : ''}`
-          : ''
+          : '') + withheldNote
 
       if (filesToEmbed.length === 0) {
         return {
