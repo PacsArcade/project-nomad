@@ -253,6 +253,17 @@ A fast file manager for your NOMAD, and the planned successor to File Browser (w
 
 **Your data:** Everything lives in `storage/copyparty/files` and the shared content folders. The app's own config, theme, and hook scripts live in `storage/copyparty` and are mounted read-only, so the app can never rewrite its own rules.
 
+**The look (arcade theme):** The dark arcade look lives in one file, `storage/copyparty/theme/arcade.css`. To recolor, edit the variables between the BEGIN and END fences at the top of that file and restart the app; the whole app follows. The app serves the stylesheet itself from a small read-only `/theme` volume declared in `copyparty.conf`. If your `copyparty.conf` was written before this change (the installer never overwrites it), add these lines and restart the app, or the page falls back to the stock look:
+
+```
+[/theme]
+  /theme
+  accs:
+    r: nomad
+  flags:
+    unlist: \.css$
+```
+
 **Works offline:** Fully. Browsing, uploading, the media player, thumbnails, and the bridge all run on your NOMAD with nothing reaching the internet.
 
 ## Meshtastic Web {% #meshtastic-web %}

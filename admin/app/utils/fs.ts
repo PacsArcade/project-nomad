@@ -26,8 +26,9 @@ export const MESHCORE_WEB_STORAGE_PATH = '/storage/meshcore-web'
 /**
  * copyparty's storage root. files/ is the served tree (the File Browser
  * successor), config/ the generated copyparty.conf (0600, mounted ro),
- * hooks/ the file-bridge scripts (mounted ro), theme/ the head injection
- * (mounted ro). See DockerService._runPreinstallActions__Copyparty.
+ * hooks/ the file-bridge scripts (mounted ro), theme/ the arcade theme
+ * (head.html delivery link and arcade.css, mounted ro). See
+ * DockerService._runPreinstallActions__Copyparty.
  */
 export const COPYPARTY_STORAGE_PATH = '/storage/copyparty'
 
