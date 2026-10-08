@@ -466,4 +466,22 @@ select:focus-visible {
   #ops a::after {
     font-size: 10px;
   }
+
+  /* File rows do not wrap. Upstream caps every cell at --file-td-w and
+     breaks words mid-token, which at phone width turns one long name
+     into three ragged lines (his pin on the r1 390 shot: this wrapping
+     looks bad). One line per row instead; the table scrolls sideways,
+     the same swipe the desktop-first layout already needs. The cap and
+     the clip come off, or nowrap would just cut names short. */
+  #files td {
+    max-width: none;
+    white-space: nowrap;
+    overflow: visible;
+  }
+
+  /* The control links keep their words whole: the line may fold between
+     links, never inside one (control-panel must not split). */
+  #wfp a {
+    white-space: nowrap;
+  }
 }
