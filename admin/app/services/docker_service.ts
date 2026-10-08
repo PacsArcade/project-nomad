@@ -1404,9 +1404,9 @@ export class DockerService {
               SERVICE_NAMES.COPYPARTY,
               'preinstall',
               `copyparty config has no [/theme] volume: the arcade theme needs it. ` +
-                `Add these lines to copyparty.conf and restart the app: ` +
-                `[/theme] /theme accs: r: nomad flags: unlist: \\.css$ ` +
-                `(see admin/docs/supply-depot-apps.md, Files (copyparty)).`
+                `Add the [/theme] volume block and the webroot unlist line from ` +
+                `admin/docs/supply-depot-apps.md (Files (copyparty)) to ` +
+                `copyparty.conf and restart the app.`
             )
           }
         } catch {
@@ -1449,6 +1449,10 @@ export class DockerService {
           '    # the no-click bridge: after every upload, fork the hook (the',
           '    # upload never blocks on it), one at a time, 120 s timeout',
           '    xau: f,c1,t120,/hooks/on-upload.sh',
+          '    # the /theme volume below is machinery, not a file to browse: hide',
+          '    # its mountpoint from the browser listing and tree (the browser JS',
+          '    # applies unlist against each node href; the direct URL still works)',
+          '    unlist: (^|/)theme/?$',
           '',
           '[/theme]      # the arcade theme stylesheet, served by copyparty itself',
           '  /theme',
@@ -1456,8 +1460,8 @@ export class DockerService {
           '    r: nomad    # the file account can read it; anonymous gets nothing',
           '  flags:',
           '    # machinery, not a file to browse: hidden from listings, the direct',
-          '    # URL still serves (the unlist volflag exists for exactly this)',
-          '    unlist: \\.css$',
+          '    # URLs still serve (the unlist volflag exists for exactly this)',
+          '    unlist: \\.(css|html)$',
           '',
         ].join('\n')
         await writeFile(confPath, conf, { mode: 0o600 })

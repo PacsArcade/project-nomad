@@ -261,7 +261,13 @@ A fast file manager for your NOMAD, and the planned successor to File Browser (w
   accs:
     r: nomad
   flags:
-    unlist: \.css$
+    unlist: \.(css|html)$
+```
+
+and, in the `flags:` block of the main `[/]` volume, one line so the machinery folder stays out of your file listing:
+
+```
+    unlist: (^|/)theme/?$
 ```
 
 **Works offline:** Fully. Browsing, uploading, the media player, thumbnails, and the bridge all run on your NOMAD with nothing reaching the internet.
