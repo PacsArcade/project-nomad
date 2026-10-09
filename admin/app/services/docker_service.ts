@@ -1300,16 +1300,22 @@ export class DockerService {
 
   /**
    * copyparty reads its whole setup from /cfg/copyparty.conf: accounts, the served
-   * volume, the xau upload hook, and the --html-head theme injection. We generate
-   * that config on install with a RANDOM per-box password (the public repo seeds
-   * no working credential; guard G3 of the T-585 security read), mode 0600, mounted
-   * read-only at /cfg. The theme head file and the file-bridge hook scripts are
+   * volume, the xau upload hook, and the theme wiring (the --html-head link plus
+   * the read-only [/theme] volume that lets copyparty itself serve the arcade
+   * stylesheet). We generate that config on install with a RANDOM per-box password
+   * (the public repo seeds no working credential; guard G3 of the T-585 security
+   * read), mode 0600, mounted read-only at /cfg. The theme files (head.html, the
+   * one-line delivery link, and arcade.css, the look itself in the house
+   * customization-point form, lane T-597) and the file-bridge hook scripts are
    * copied from the admin image assets (prod: /app/assets, baked by the Dockerfile;
    * dev: the repo checkout's theme/ and contrib/ dirs) into storage and mounted
    * read-only at /theme and /hooks, OUTSIDE the served /w tree (guards G4/G5).
    * Idempotent: an existing copyparty.conf is never overwritten, so operator edits
    * (more accounts, changed password) survive reinstalls; hooks and theme refresh
-   * every install so script fixes reach existing boxes.
+   * every install so script fixes reach existing boxes. A pre-T-597 conf has no
+   * [/theme] volume, so its refreshed head.html link would 404; when we keep an
+   * existing conf we check for that block and broadcast the exact lines to add
+   * instead of touching the operator's file.
    */
   private async _runPreinstallActions__Copyparty(): Promise<void> {
     const appDir = join(process.cwd(), COPYPARTY_STORAGE_PATH)
@@ -1364,15 +1370,18 @@ export class DockerService {
         )
       }
 
-      await copyAsset(
-        assetRoots.map((root) =>
-          root.endsWith('copyparty')
-            ? join(root, 'theme', 'head.html')
-            : join(root, 'theme', 'copyparty', 'head.html')
-        ),
-        join(themeDir, 'head.html'),
-        0o444
-      )
+      const themeFiles = ['head.html', 'arcade.css']
+      for (const file of themeFiles) {
+        await copyAsset(
+          assetRoots.map((root) =>
+            root.endsWith('copyparty')
+              ? join(root, 'theme', file)
+              : join(root, 'theme', 'copyparty', file)
+          ),
+          join(themeDir, file),
+          0o444
+        )
+      }
 
       try {
         await access(confPath)
@@ -1381,6 +1390,32 @@ export class DockerService {
           'preinstall',
           `copyparty config already exists, keeping it (operator-owned).`
         )
+        // The theme files just refreshed to the T-597 split (head.html is now a
+        // one-line link to /theme/arcade.css, which copyparty serves from its
+        // own read-only [/theme] volume). A conf generated before T-597 has no
+        // [/theme] block, so the link would 404 and the page would fall back to
+        // the stock look. The conf is operator-owned, so warn with the exact
+        // block to add rather than editing it. A conf we cannot read is left
+        // alone entirely; it must never fall through to the first-install write.
+        try {
+          const existingConf = await readFile(confPath, 'utf8')
+          if (!existingConf.includes('[/theme]')) {
+            this._broadcast(
+              SERVICE_NAMES.COPYPARTY,
+              'preinstall',
+              `copyparty config has no [/theme] volume: the arcade theme needs it. ` +
+                `Add the [/theme] volume block and the webroot unlist line from ` +
+                `admin/docs/supply-depot-apps.md (Files (copyparty)) to ` +
+                `copyparty.conf and restart the app.`
+            )
+          }
+        } catch {
+          this._broadcast(
+            SERVICE_NAMES.COPYPARTY,
+            'preinstall',
+            `copyparty config exists but could not be read; leaving it untouched.`
+          )
+        }
       } catch {
         // First install: random password, argon2-hashed in memory by copyparty
         // (ah-alg), written 0600. The operator reads it from this file on the
@@ -1399,7 +1434,7 @@ export class DockerService {
           '  ansi         # colors in log messages',
           '  no-robots    # ask search engines to stay out',
           '  ui-norepl    # hide the pi button (a javascript console, not a logo)',
-          '  html-head: @/theme/head.html  # the arcade theme, read-only mount',
+          '  html-head: @/theme/head.html  # the arcade theme link, read-only mount',
           '  ah-alg: argon2                # password hashing',
           '',
           '[accounts]',
@@ -1414,6 +1449,19 @@ export class DockerService {
           '    # the no-click bridge: after every upload, fork the hook (the',
           '    # upload never blocks on it), one at a time, 120 s timeout',
           '    xau: f,c1,t120,/hooks/on-upload.sh',
+          '    # the /theme volume below is machinery, not a file to browse: hide',
+          '    # its mountpoint from the browser listing and tree (the browser JS',
+          '    # applies unlist against each node href; the direct URL still works)',
+          '    unlist: (^|/)theme/?$',
+          '',
+          '[/theme]      # the arcade theme stylesheet, served by copyparty itself',
+          '  /theme',
+          '  accs:',
+          '    r: nomad    # the file account can read it; anonymous gets nothing',
+          '  flags:',
+          '    # machinery, not a file to browse: hidden from listings, the direct',
+          '    # URLs still serve (the unlist volflag exists for exactly this)',
+          '    unlist: \\.(css|html)$',
           '',
         ].join('\n')
         await writeFile(confPath, conf, { mode: 0o600 })

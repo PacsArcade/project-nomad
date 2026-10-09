@@ -108,10 +108,12 @@ COPY README.md /app/README.md
 # (see DockerService._runPreinstallActions__CalibreWeb)
 COPY install/calibre-empty-library/metadata.db /app/assets/calibre/metadata.db
 
-# copyparty install assets: the arcade theme head injection and the
-# file-bridge hook scripts, seeded into storage/copyparty on install
+# copyparty install assets: the arcade theme (arcade.css, the look, plus
+# head.html, the one-line delivery link) and the file-bridge hook scripts,
+# seeded into storage/copyparty on install
 # (see DockerService._runPreinstallActions__Copyparty)
 COPY theme/copyparty/head.html /app/assets/copyparty/theme/head.html
+COPY theme/copyparty/arcade.css /app/assets/copyparty/theme/arcade.css
 COPY contrib/file-bridge/ /app/assets/copyparty/file-bridge/
 
 # Copy entrypoint script and ensure it's executable
